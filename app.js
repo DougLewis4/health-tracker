@@ -764,8 +764,8 @@ window._updateChart = function(exName) {
     data: {
       labels: points.map(p => formatDate(p.date)),
       datasets: [{ data: yData,
-        borderColor: "#d45a0a", backgroundColor: "rgba(212,90,10,0.08)",
-        borderWidth: 2.5, pointBackgroundColor: "#d45a0a",
+        borderColor: "#b2d7c7", backgroundColor: "rgba(178,215,199,0.08)",
+        borderWidth: 2.5, pointBackgroundColor: "#b2d7c7",
         pointRadius: 5, pointHoverRadius: 7, tension: 0.35, fill: true }]
     },
     options: {
@@ -858,8 +858,8 @@ function renderBWChart() {
     data: {
       labels: sorted.map(d => formatDate(d.date)),
       datasets: [{ data: sorted.map(d => d.weight),
-        borderColor: "#d45a0a", backgroundColor: "rgba(212,90,10,0.08)",
-        borderWidth: 2.5, pointBackgroundColor: "#d45a0a",
+        borderColor: "#b2d7c7", backgroundColor: "rgba(178,215,199,0.08)",
+        borderWidth: 2.5, pointBackgroundColor: "#b2d7c7",
         pointRadius: 4, tension: 0.35, fill: true }]
     },
     options: {
