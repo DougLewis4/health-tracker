@@ -1,0 +1,17 @@
+{
+  "name": "LIFT — Fitness Tracker",
+  "short_name": "LIFT",
+  "description": "Personal fitness and strength tracker",
+  "start_url": "/health-tracker/",
+  "display": "standalone",
+  "background_color": "#0e1b27",
+  "theme_color": "#0e1b27",
+  "icons": [
+    {
+      "src": "icon.png",
+      "sizes": "867x867",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
