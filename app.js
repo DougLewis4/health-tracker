@@ -352,18 +352,23 @@ async function getWhoopToken() {
   return token;
 }
 
+async function whoopApi(path, token) {
+  const res = await fetch(WHOOP_WORKER_URL, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'api', path, token })
+  });
+  return res.ok ? res.json() : null;
+}
+
 async function loadWhoopData() {
   const token = await getWhoopToken();
   if (!token) return null;
   try {
-    const [recRes, cycRes] = await Promise.all([
-      fetch(WHOOP_API_BASE + '/v2/recovery?limit=1', { headers: { Authorization: 'Bearer ' + token } }),
-      fetch(WHOOP_API_BASE + '/v2/cycle?limit=1',    { headers: { Authorization: 'Bearer ' + token } })
+    const [recovery, cycle] = await Promise.all([
+      whoopApi('/v2/recovery?limit=1', token),
+      whoopApi('/v2/cycle?limit=1',    token)
     ]);
-    return {
-      recovery: recRes.ok ? await recRes.json() : null,
-      cycle:    cycRes.ok ? await cycRes.json() : null
-    };
+    return { recovery, cycle };
   } catch(e) { console.error('Whoop fetch error:', e); return null; }
 }
 
