@@ -14,6 +14,14 @@ const firebaseConfig = {
 const firebaseApp = initializeApp(firebaseConfig);
 const db = getFirestore(firebaseApp);
 
+// ── Whoop Config ──────────────────────────────────────────────
+const WHOOP_CLIENT_ID  = 'd5efd9e1-e119-4838-820b-d599b4b0e9ba';
+const WHOOP_WORKER_URL = 'https://whoop-auth.dougalewis.workers.dev/';
+const WHOOP_REDIRECT   = 'https://douglewis4.github.io/health-tracker/';
+const WHOOP_AUTH_URL   = 'https://api.prod.whoop.com/oauth/oauth2/auth';
+const WHOOP_API_BASE   = 'https://api.prod.whoop.com/developer';
+const WHOOP_SCOPES     = 'read:recovery read:cycles read:sleep read:profile offline';
+
 // ── Escape user-provided strings before inserting into HTML ───
 function esc(str) {
   return String(str ?? "")
@@ -218,6 +226,7 @@ let progressChart = null;
 let weightChart = null;
 let activeLogGroup = "Legs";
 let activeLibGroup = "Legs";
+let whoopData = null;
 
 let logState = {
   date: todayStr(),
@@ -291,6 +300,126 @@ async function saveBodyweightDoc(date, weight) {
   allBodyweights.unshift({ id: ref.id, date, weight: parseFloat(weight) });
 }
 
+// ── Whoop Auth & Data ────────────────────────────────────────
+window._connectWhoop = function() {
+  const state = Array.from(crypto.getRandomValues(new Uint8Array(16)))
+    .map(b => b.toString(16).padStart(2, '0')).join('');
+  localStorage.setItem('whoop_state', state);
+  const params = new URLSearchParams({
+    client_id: WHOOP_CLIENT_ID, redirect_uri: WHOOP_REDIRECT,
+    response_type: 'code', scope: WHOOP_SCOPES, state
+  });
+  window.location.href = WHOOP_AUTH_URL + '?' + params.toString();
+};
+
+window._disconnectWhoop = function() {
+  ['whoop_access_token','whoop_refresh_token','whoop_token_expires','whoop_state']
+    .forEach(k => localStorage.removeItem(k));
+  whoopData = null;
+  renderDashboard();
+};
+
+async function exchangeWhoopCode(code) {
+  const res = await fetch(WHOOP_WORKER_URL, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ code, grant_type: 'authorization_code' })
+  });
+  return res.json();
+}
+
+function storeWhoopTokens(tokens) {
+  localStorage.setItem('whoop_access_token', tokens.access_token);
+  if (tokens.refresh_token) localStorage.setItem('whoop_refresh_token', tokens.refresh_token);
+  localStorage.setItem('whoop_token_expires', Date.now() + (tokens.expires_in * 1000));
+}
+
+async function getWhoopToken() {
+  const token   = localStorage.getItem('whoop_access_token');
+  const expires = parseInt(localStorage.getItem('whoop_token_expires') || '0');
+  if (!token) return null;
+  if (Date.now() > expires - 300000) {
+    const rt = localStorage.getItem('whoop_refresh_token');
+    if (!rt) return token;
+    try {
+      const res = await fetch(WHOOP_WORKER_URL, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refresh_token: rt, grant_type: 'refresh_token' })
+      });
+      const tokens = await res.json();
+      if (tokens?.access_token) { storeWhoopTokens(tokens); return tokens.access_token; }
+    } catch(e) { /* use existing token */ }
+  }
+  return token;
+}
+
+async function loadWhoopData() {
+  const token = await getWhoopToken();
+  if (!token) return null;
+  try {
+    const [recRes, cycRes] = await Promise.all([
+      fetch(WHOOP_API_BASE + '/v2/recovery?limit=1', { headers: { Authorization: 'Bearer ' + token } }),
+      fetch(WHOOP_API_BASE + '/v2/cycle?limit=1',    { headers: { Authorization: 'Bearer ' + token } })
+    ]);
+    return {
+      recovery: recRes.ok ? await recRes.json() : null,
+      cycle:    cycRes.ok ? await cycRes.json() : null
+    };
+  } catch(e) { console.error('Whoop fetch error:', e); return null; }
+}
+
+function whoopSectionHTML() {
+  const connected = !!localStorage.getItem('whoop_access_token');
+
+  if (!connected) {
+    return '<div class="whoop-card not-connected">' +
+      '<span class="whoop-logo">WHOOP</span>' +
+      '<button class="btn-secondary" onclick="window._connectWhoop()">Connect WHOOP</button>' +
+    '</div>';
+  }
+
+  const rec    = whoopData?.recovery?.records?.[0];
+  const cycle  = whoopData?.cycle?.records?.[0];
+  const score  = rec?.score?.recovery_score ?? null;
+  const hrv    = rec?.score?.hrv_rmssd_milli   ? Math.round(rec.score.hrv_rmssd_milli)   : null;
+  const rhr    = rec?.score?.resting_heart_rate ? Math.round(rec.score.resting_heart_rate) : null;
+  const strain = cycle?.score?.strain           ? cycle.score.strain.toFixed(1)            : null;
+
+  let scoreColor, scoreLabel;
+  if (score === null)   { scoreColor = '#4a728f'; scoreLabel = '—'; }
+  else if (score >= 67) { scoreColor = '#2ecc71'; scoreLabel = 'Peak'; }
+  else if (score >= 34) { scoreColor = '#f0a500'; scoreLabel = 'Good'; }
+  else                  { scoreColor = '#e05050'; scoreLabel = 'Low'; }
+
+  const pct = score ?? 0;
+
+  return '<div class="whoop-card">' +
+    '<div class="whoop-card-header">' +
+      '<span class="whoop-logo">WHOOP</span>' +
+      '<button class="whoop-disconnect" onclick="window._disconnectWhoop()">Disconnect</button>' +
+    '</div>' +
+    '<div class="whoop-metrics">' +
+      '<div class="whoop-score-block">' +
+        '<div class="whoop-ring-wrap">' +
+          '<svg class="whoop-ring-svg" viewBox="0 0 36 36">' +
+            '<circle class="ring-bg" cx="18" cy="18" r="15.9" fill="none" stroke-width="2.8"/>' +
+            '<circle class="ring-fill" cx="18" cy="18" r="15.9" fill="none" stroke-width="2.8"' +
+              ' stroke="' + scoreColor + '" pathLength="100"' +
+              ' stroke-dasharray="' + pct + ' 100" stroke-linecap="round"/>' +
+          '</svg>' +
+          '<div class="whoop-score-num" style="color:' + scoreColor + '">' + (score !== null ? score + '%' : '—') + '</div>' +
+        '</div>' +
+        '<div class="whoop-score-label" style="color:' + scoreColor + '">' + scoreLabel + '</div>' +
+        '<div class="whoop-metric-name">Recovery</div>' +
+      '</div>' +
+      '<div class="whoop-stats-grid">' +
+        '<div class="whoop-stat"><div class="whoop-stat-val">' + (hrv    ?? '—') + '</div><div class="whoop-stat-lbl">HRV (ms)</div></div>' +
+        '<div class="whoop-stat"><div class="whoop-stat-val">' + (rhr    ?? '—') + '</div><div class="whoop-stat-lbl">RHR (bpm)</div></div>' +
+        '<div class="whoop-stat"><div class="whoop-stat-val">' + (strain ?? '—') + '</div><div class="whoop-stat-lbl">Strain</div></div>' +
+      '</div>' +
+    '</div>' +
+  '</div>';
+}
+
 // ── Navigation ───────────────────────────────────────────────
 function showView(name) {
   document.querySelectorAll(".view").forEach(v => v.classList.add("hidden"));
@@ -348,6 +477,8 @@ function renderDashboard() {
         '<div class="stat-value" style="font-size:16px;padding-top:4px">' + (last ? esc(daysAgo(last.date)) : "—") + '</div>' +
         '<div class="stat-sub">' + (last ? (last.exercises || []).length + " exercises" : "no logs yet") + '</div></div>' +
     '</div>' +
+
+    whoopSectionHTML() +
 
     (allWorkouts.length === 0
       ? '<div class="empty-state"><div class="empty-icon">💪</div>' +
@@ -866,6 +997,20 @@ async function init() {
 
   try { await Promise.all([loadWorkouts(), loadBodyweights()]); }
   catch (e) { console.error("Firebase load error:", e); }
+
+  // Handle Whoop OAuth callback (runs after Whoop redirects back to the app)
+  const urlParams  = new URLSearchParams(window.location.search);
+  const oauthCode  = urlParams.get('code');
+  const oauthState = urlParams.get('state');
+  if (oauthCode && oauthState && oauthState === localStorage.getItem('whoop_state')) {
+    window.history.replaceState({}, '', window.location.pathname);
+    try {
+      const tokens = await exchangeWhoopCode(oauthCode);
+      if (tokens?.access_token) { storeWhoopTokens(tokens); toast('WHOOP connected!'); }
+    } catch(e) { console.error('Whoop token exchange error:', e); }
+  }
+
+  whoopData = await loadWhoopData();
 
   loadingDiv.remove();
   showView("dashboard");
