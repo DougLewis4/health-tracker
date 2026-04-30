@@ -1020,7 +1020,18 @@ async function init() {
   document.getElementById("app-main").appendChild(loadingDiv);
 
   try { await Promise.all([loadWorkouts(), loadBodyweights()]); }
-  catch (e) { console.error("Firebase load error:", e); }
+  catch (e) {
+    console.error("Firebase load error:", e);
+    loadingDiv.remove();
+    document.getElementById("view-dashboard").innerHTML =
+      '<div class="empty-state"><div class="empty-icon">⚠️</div>' +
+      '<div class="empty-title">Could not load your data</div>' +
+      '<div class="empty-sub">Firebase access may have expired. Check your Firestore security rules and try refreshing.</div></div>';
+    document.querySelectorAll(".nav-btn").forEach(btn =>
+      btn.addEventListener("click", () => showView(btn.dataset.view))
+    );
+    return;
+  }
 
   // Handle Whoop OAuth callback (runs after Whoop redirects back to the app)
   const urlParams  = new URLSearchParams(window.location.search);
