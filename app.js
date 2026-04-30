@@ -443,11 +443,6 @@ function showView(name) {
 function renderDashboard() {
   const el = document.getElementById("view-dashboard");
   const now = new Date();
-  const dayName  = now.toLocaleDateString("en-US", { weekday: "long" });
-  const dateLabel = now.toLocaleDateString("en-US", { month: "long", day: "numeric" });
-
-  const last  = allWorkouts[0];
-  const lastBW = allBodyweights[0];
 
   const weekStart = (() => {
     const d = new Date(now);
@@ -455,32 +450,56 @@ function renderDashboard() {
     return d.toISOString().split("T")[0];
   })();
   const weekCount = allWorkouts.filter(w => w.date >= weekStart).length;
+  const weekPct = Math.min(100, Math.round((weekCount / 5) * 100));
 
-  // Build recent workout cards as safe HTML
+  const last = allWorkouts[0];
+  const lastGroups = last
+    ? [...new Set((last.exercises || []).map(e => e.muscleGroup).filter(Boolean))]
+    : [];
+  const lastGroupLabel = lastGroups.length
+    ? lastGroups.join(' & ')
+    : (last?.cardio ? 'Cardio' : '');
+
+  let ringColor;
+  if (weekPct >= 80)      ringColor = '#2ecc71';
+  else if (weekPct >= 40) ringColor = '#b2d7c7';
+  else                    ringColor = '#4a728f';
+
   const recentCards = allWorkouts.slice(0, 5).map(workoutCardHTML).join("");
 
   el.innerHTML =
-    '<div class="dashboard-header">' +
-      '<div>' +
-        '<div class="dashboard-day">' + esc(dayName) + '</div>' +
-        '<div class="dashboard-date">' + esc(dateLabel) + '</div>' +
+    '<div class="hero-card">' +
+      '<div class="hero-top">' +
+        '<div class="hero-ring-wrap">' +
+          '<svg class="hero-ring-svg" viewBox="0 0 36 36">' +
+            '<circle class="ring-bg" cx="18" cy="18" r="15.9" fill="none" stroke-width="2.5"/>' +
+            '<circle class="ring-fill" cx="18" cy="18" r="15.9" fill="none" stroke-width="2.5"' +
+              ' stroke="' + ringColor + '" pathLength="100"' +
+              ' stroke-dasharray="' + weekPct + ' 100" stroke-linecap="round"/>' +
+          '</svg>' +
+          '<div class="hero-ring-pct" style="color:' + ringColor + '">' + weekPct + '%</div>' +
+        '</div>' +
+        '<div class="hero-right">' +
+          '<div class="hero-eyebrow">THIS WEEK</div>' +
+          '<div class="hero-count">' + weekCount + '<span class="hero-total">/5</span></div>' +
+          '<div class="hero-count-label">workouts</div>' +
+        '</div>' +
       '</div>' +
-      '<button class="btn-primary log-quick-btn" onclick="window._nav(\'log\')">' +
-        '<svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">' +
-          '<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>' +
-        '</svg> Log Workout' +
-      '</button>' +
-    '</div>' +
-
-    '<div class="stats-grid">' +
-      '<div class="stat-card"><div class="stat-label">This Week</div>' +
-        '<div class="stat-value">' + weekCount + '</div><div class="stat-sub">workouts</div></div>' +
-      '<div class="stat-card"><div class="stat-label">Bodyweight</div>' +
-        '<div class="stat-value">' + (lastBW ? lastBW.weight : "—") + '</div>' +
-        '<div class="stat-sub">' + (lastBW ? "lbs &middot; " + esc(daysAgo(lastBW.date)) : "not logged") + '</div></div>' +
-      '<div class="stat-card"><div class="stat-label">Last Session</div>' +
-        '<div class="stat-value" style="font-size:16px;padding-top:4px">' + (last ? esc(daysAgo(last.date)) : "—") + '</div>' +
-        '<div class="stat-sub">' + (last ? (last.exercises || []).length + " exercises" : "no logs yet") + '</div></div>' +
+      '<div class="hero-divider"></div>' +
+      '<div class="hero-footer">' +
+        '<div class="hero-last">' +
+          (last
+            ? '<div class="hero-last-eyebrow">LAST SESSION</div>' +
+              '<div class="hero-last-val">' + esc(daysAgo(last.date)) +
+                (lastGroupLabel ? ' &middot; ' + esc(lastGroupLabel) : '') + '</div>'
+            : '<div class="hero-last-val">No workouts logged yet</div>') +
+        '</div>' +
+        '<button class="btn-primary hero-log-btn" onclick="window._nav(\'log\')">' +
+          '<svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">' +
+            '<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>' +
+          '</svg> Log' +
+        '</button>' +
+      '</div>' +
     '</div>' +
 
     whoopSectionHTML() +
@@ -488,7 +507,7 @@ function renderDashboard() {
     (allWorkouts.length === 0
       ? '<div class="empty-state"><div class="empty-icon">💪</div>' +
           '<div class="empty-title">No workouts logged yet</div>' +
-          '<div class="empty-sub">Tap Log Workout to record your first session</div></div>'
+          '<div class="empty-sub">Tap Log to record your first session</div></div>'
       : '<div class="section-title">Recent Workouts</div>' +
           '<div class="workout-list">' + recentCards + '</div>');
 }
