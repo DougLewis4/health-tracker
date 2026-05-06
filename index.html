@@ -11,7 +11,7 @@
   <meta name="apple-mobile-web-app-title" content="LIFT">
   <meta name="theme-color" content="#0e1b27">
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500;1,600&family=Inter:wght@400;500;600;700;800;900&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -22,18 +22,20 @@
   </header>
 
   <main class="app-main" id="app-main">
-
     <section class="view" id="view-dashboard"></section>
-
     <section class="view hidden" id="view-log"></section>
-
     <section class="view hidden" id="view-progress"></section>
-
     <section class="view hidden" id="view-weight"></section>
-
-    <section class="view hidden" id="view-library"></section>
-
   </main>
+
+  <!-- Workout Bottom Sheet -->
+  <div class="sheet-overlay hidden" id="workout-sheet">
+    <div class="sheet-backdrop" onclick="window._closeSheet()"></div>
+    <div class="sheet-panel">
+      <div class="sheet-handle-bar"></div>
+      <div class="sheet-inner" id="sheet-content"></div>
+    </div>
+  </div>
 
   <nav class="bottom-nav">
     <button class="nav-btn active" data-view="dashboard">
@@ -64,13 +66,6 @@
         <path d="M7 14V9a5 5 0 0110 0v5"/>
       </svg>
       <span>Weight</span>
-    </button>
-    <button class="nav-btn" data-view="library">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
-        <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
-        <rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/>
-      </svg>
-      <span>Library</span>
     </button>
   </nav>
 

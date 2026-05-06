@@ -19,8 +19,14 @@ const WHOOP_CLIENT_ID  = 'd5efd9e1-e119-4838-820b-d599b4b0e9ba';
 const WHOOP_WORKER_URL = 'https://whoop-auth.dougalewis.workers.dev/';
 const WHOOP_REDIRECT   = 'https://douglewis4.github.io/health-tracker/';
 const WHOOP_AUTH_URL   = 'https://api.prod.whoop.com/oauth/oauth2/auth';
-const WHOOP_API_BASE   = 'https://api.prod.whoop.com/developer';
 const WHOOP_SCOPES     = 'read:recovery read:cycles read:sleep read:profile offline';
+
+// ── App Constants ─────────────────────────────────────────────
+const GOAL_WEIGHT = 215;
+const DAILY_QUOTE = {
+  text: "You have power over your mind — not outside events. Realize this, and you will find strength.",
+  author: "Marcus Aurelius"
+};
 
 // ── Escape user-provided strings before inserting into HTML ───
 function esc(str) {
@@ -33,8 +39,6 @@ function esc(str) {
 }
 
 // ── Exercise Library ─────────────────────────────────────────
-// All content below is hardcoded (not user-supplied), so esc() is not needed here.
-// esc() is applied wherever user-entered data (exercise names, notes) enters HTML.
 const EXERCISES = {
   "Legs": [
     { name: "Squat", weighted: true, cues: [
@@ -225,8 +229,8 @@ let allBodyweights = [];
 let progressChart = null;
 let weightChart = null;
 let activeLogGroup = "Legs";
-let activeLibGroup = "Legs";
 let whoopData = null;
+let sheetOpen = false;
 
 let logState = {
   date: todayStr(),
@@ -268,6 +272,81 @@ function safeId(str) {
 function maxW(ex) {
   if (!ex.sets || !ex.sets.length) return 0;
   return Math.max(...ex.sets.map(s => parseFloat(s.weight) || 0));
+}
+
+function maxWeightEver(exName) {
+  let best = 0;
+  for (const w of allWorkouts) {
+    const ex = (w.exercises || []).find(e => e.name === exName);
+    if (ex?.sets) {
+      const m = Math.max(...ex.sets.map(s => parseFloat(s.weight) || 0));
+      if (m > best) best = m;
+    }
+  }
+  return best;
+}
+
+// ── Dashboard Helpers ─────────────────────────────────────────
+function calculateStreak() {
+  if (allWorkouts.length === 0) return 0;
+  const workoutDates = new Set(allWorkouts.map(w => w.date));
+  let streak = 0;
+  const checkDate = new Date(todayStr());
+  // If no workout today, start counting from yesterday
+  if (!workoutDates.has(todayStr())) checkDate.setDate(checkDate.getDate() - 1);
+  while (true) {
+    const dateStr = checkDate.toISOString().split("T")[0];
+    if (workoutDates.has(dateStr)) {
+      streak++;
+      checkDate.setDate(checkDate.getDate() - 1);
+    } else {
+      break;
+    }
+  }
+  return streak;
+}
+
+function countRecentPRs() {
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - 7);
+  const cutoffStr = cutoff.toISOString().split("T")[0];
+
+  const prevMax = {};
+  for (const w of allWorkouts.filter(w => w.date < cutoffStr)) {
+    for (const ex of (w.exercises || [])) {
+      const m = Math.max(...(ex.sets || []).map(s => parseFloat(s.weight) || 0));
+      if (!prevMax[ex.name] || m > prevMax[ex.name]) prevMax[ex.name] = m;
+    }
+  }
+  const prSet = new Set();
+  for (const w of allWorkouts.filter(w => w.date >= cutoffStr)) {
+    for (const ex of (w.exercises || [])) {
+      const m = Math.max(...(ex.sets || []).map(s => parseFloat(s.weight) || 0));
+      if (m > (prevMax[ex.name] || 0)) prSet.add(ex.name);
+    }
+  }
+  return prSet.size;
+}
+
+function getWeekDays() {
+  const now = new Date();
+  const dow = now.getDay(); // 0=Sun
+  const monday = new Date(now);
+  monday.setDate(now.getDate() - (dow === 0 ? 6 : dow - 1));
+  const workoutDates = new Set(allWorkouts.map(w => w.date));
+  const labels = ["M","T","W","T","F","S","S"];
+  return Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(monday);
+    d.setDate(monday.getDate() + i);
+    const dateStr = d.toISOString().split("T")[0];
+    return {
+      label: labels[i],
+      dateStr,
+      isToday: dateStr === todayStr(),
+      isFuture: dateStr > todayStr(),
+      hasWorkout: workoutDates.has(dateStr)
+    };
+  });
 }
 
 // ── Firestore ────────────────────────────────────────────────
@@ -374,29 +453,24 @@ async function loadWhoopData() {
 
 function whoopSectionHTML() {
   const connected = !!localStorage.getItem('whoop_access_token');
-
   if (!connected) {
     return '<div class="whoop-card not-connected">' +
       '<span class="whoop-logo">WHOOP</span>' +
       '<button class="btn-secondary" onclick="window._connectWhoop()">Connect WHOOP</button>' +
     '</div>';
   }
-
   const rec    = whoopData?.recovery?.records?.[0];
   const cycle  = whoopData?.cycle?.records?.[0];
   const score  = rec?.score?.recovery_score ?? null;
   const hrv    = rec?.score?.hrv_rmssd_milli   ? Math.round(rec.score.hrv_rmssd_milli)   : null;
   const rhr    = rec?.score?.resting_heart_rate ? Math.round(rec.score.resting_heart_rate) : null;
   const strain = cycle?.score?.strain           ? cycle.score.strain.toFixed(1)            : null;
-
   let scoreColor, scoreLabel;
   if (score === null)   { scoreColor = '#4a728f'; scoreLabel = '—'; }
   else if (score >= 67) { scoreColor = '#2ecc71'; scoreLabel = 'Peak'; }
   else if (score >= 34) { scoreColor = '#f0a500'; scoreLabel = 'Good'; }
   else                  { scoreColor = '#e05050'; scoreLabel = 'Low'; }
-
   const pct = score ?? 0;
-
   return '<div class="whoop-card">' +
     '<div class="whoop-card-header">' +
       '<span class="whoop-logo">WHOOP</span>' +
@@ -427,96 +501,163 @@ function whoopSectionHTML() {
 
 // ── Navigation ───────────────────────────────────────────────
 function showView(name) {
+  if (sheetOpen) window._closeSheet();
   document.querySelectorAll(".view").forEach(v => v.classList.add("hidden"));
   document.querySelectorAll(".nav-btn").forEach(b => b.classList.remove("active"));
   document.getElementById("view-" + name).classList.remove("hidden");
   document.querySelector("[data-view='" + name + "']").classList.add("active");
-
   if (name === "dashboard") renderDashboard();
   else if (name === "log")      renderLog();
   else if (name === "progress") renderProgress();
   else if (name === "weight")   renderWeightView();
-  else if (name === "library")  renderLibrary();
 }
 
 // ── Dashboard ────────────────────────────────────────────────
 function renderDashboard() {
   const el = document.getElementById("view-dashboard");
-  const now = new Date();
 
-  const weekStart = (() => {
-    const d = new Date(now);
-    d.setDate(d.getDate() - d.getDay());
-    return d.toISOString().split("T")[0];
-  })();
-  const weekCount = allWorkouts.filter(w => w.date >= weekStart).length;
-  const weekPct = Math.min(100, Math.round((weekCount / 5) * 100));
+  const latestBW  = allBodyweights[0];
+  const startBW   = allBodyweights[allBodyweights.length - 1];
+  const curWeight = latestBW?.weight;
+  const startWeight = startBW?.weight;
 
-  const last = allWorkouts[0];
-  const lastGroups = last
-    ? [...new Set((last.exercises || []).map(e => e.muscleGroup).filter(Boolean))]
-    : [];
-  const lastGroupLabel = lastGroups.length
-    ? lastGroups.join(' & ')
-    : (last?.cardio ? 'Cardio' : '');
+  const streak  = calculateStreak();
+  const prCount = countRecentPRs();
+  const weekDays = getWeekDays();
 
-  let ringColor;
-  if (weekPct >= 80)      ringColor = '#2ecc71';
-  else if (weekPct >= 40) ringColor = '#b2d7c7';
-  else                    ringColor = '#4a728f';
+  const todayWorkout = allWorkouts.find(w => w.date === todayStr());
 
-  const recentCards = allWorkouts.slice(0, 5).map(workoutCardHTML).join("");
+  // Weight progress bar
+  let progressPct = 0;
+  if (startWeight && curWeight && GOAL_WEIGHT > startWeight) {
+    progressPct = Math.min(100, Math.max(0,
+      ((curWeight - startWeight) / (GOAL_WEIGHT - startWeight)) * 100
+    ));
+  }
+  const lbsToGo = curWeight ? Math.max(0, GOAL_WEIGHT - curWeight).toFixed(1) : "—";
+
+  // Week strip
+  const weekHTML = weekDays.map(d => {
+    let dotClass = "week-day-dot";
+    let content  = "—";
+    if (d.isToday) { dotClass += " today"; content = "NOW"; }
+    else if (d.hasWorkout) { dotClass += " done"; content = "✓"; }
+    return '<div class="week-day">' +
+      '<span class="week-day-label' + (d.isToday ? " today" : "") + '">' + d.label + '</span>' +
+      '<div class="' + dotClass + '">' + content + '</div>' +
+    '</div>';
+  }).join("");
+
+  // Today's workout card body
+  let todayBody;
+  if (todayWorkout) {
+    const exRows = (todayWorkout.exercises || []).map(ex => {
+      const mw = maxW(ex);
+      const detail = ex.weighted === false
+        ? ex.sets.length + " sets"
+        : ex.sets.length + " sets · " + (mw > 0 ? mw + " lbs" : "—");
+      return '<div class="today-ex-row">' +
+        '<div class="today-ex-dot"></div>' +
+        '<span class="today-ex-name">' + esc(ex.name) + '</span>' +
+        '<span class="today-ex-sets">' + detail + '</span>' +
+      '</div>';
+    }).join("");
+    const cardioRow = todayWorkout.cardio
+      ? '<div class="today-ex-row"><div class="today-ex-dot"></div>' +
+          '<span class="today-ex-name">🚴 Bike</span>' +
+          '<span class="today-ex-sets">' + parseInt(todayWorkout.cardio) + ' min</span></div>'
+      : "";
+    todayBody = '<div class="today-exercises">' + exRows + cardioRow + '</div>';
+  } else {
+    todayBody =
+      '<div class="today-empty">' +
+        '<p class="today-empty-text">No workout logged yet today</p>' +
+        '<button class="btn-primary" onclick="window._openSheet()" style="width:100%">' +
+          'Create Today\'s Workout' +
+        '</button>' +
+      '</div>';
+  }
+
+  const recentCards = allWorkouts.slice(0, 3).map(workoutCardHTML).join("");
 
   el.innerHTML =
-    '<div class="hero-card">' +
-      '<div class="hero-top">' +
-        '<div class="hero-ring-wrap">' +
-          '<svg class="hero-ring-svg" viewBox="0 0 36 36">' +
-            '<circle class="ring-bg" cx="18" cy="18" r="15.9" fill="none" stroke-width="2.5"/>' +
-            '<circle class="ring-fill" cx="18" cy="18" r="15.9" fill="none" stroke-width="2.5"' +
-              ' stroke="' + ringColor + '" pathLength="100"' +
-              ' stroke-dasharray="' + weekPct + ' 100" stroke-linecap="round"/>' +
-          '</svg>' +
-          '<div class="hero-ring-pct" style="color:' + ringColor + '">' + weekPct + '%</div>' +
-        '</div>' +
-        '<div class="hero-right">' +
-          '<div class="hero-eyebrow">THIS WEEK</div>' +
-          '<div class="hero-count">' + weekCount + '<span class="hero-total">/5</span></div>' +
-          '<div class="hero-count-label">workouts</div>' +
+    '<span class="dash-greeting">Good morning</span>' +
+
+    '<div class="quote-card">' +
+      '<p class="quote-text">“' + esc(DAILY_QUOTE.text) + '”</p>' +
+      '<cite class="quote-author">— ' + esc(DAILY_QUOTE.author) + '</cite>' +
+    '</div>' +
+
+    (curWeight
+      ? '<div class="bw-section">' +
+          '<span class="bw-label">Body Weight</span>' +
+          '<div class="bw-row">' +
+            '<div style="display:flex;align-items:baseline;gap:4px">' +
+              '<span class="bw-num">' + curWeight + '</span>' +
+              '<span class="bw-unit">lbs</span>' +
+            '</div>' +
+            '<div class="bw-goal">' +
+              '<span class="bw-goal-label">Goal</span>' +
+              '<span class="bw-goal-val">' + GOAL_WEIGHT + ' lbs</span>' +
+            '</div>' +
+          '</div>' +
+          '<div class="goal-bar-track"><div class="goal-bar-fill" style="width:' + progressPct.toFixed(1) + '%"></div></div>' +
+          '<div class="goal-bar-labels">' +
+            '<span>' + (startWeight ?? "—") + ' lbs start</span>' +
+            '<span>' + lbsToGo + ' lbs to go</span>' +
+          '</div>' +
+        '</div>'
+      : '<div class="bw-section">' +
+          '<span class="bw-label">Body Weight</span>' +
+          '<p style="font-size:14px;color:var(--text-muted);margin-bottom:4px">No weight logged yet</p>' +
+        '</div>') +
+
+    '<div class="dash-divider"></div>' +
+
+    '<div class="stats-row">' +
+      '<div class="stat-pill">' +
+        '<div class="stat-pill-icon fire">🔥</div>' +
+        '<div>' +
+          '<div class="stat-pill-num">' + streak + '</div>' +
+          '<div class="stat-pill-label">Day Streak</div>' +
         '</div>' +
       '</div>' +
-      '<div class="hero-divider"></div>' +
-      '<div class="hero-footer">' +
-        '<div class="hero-last">' +
-          (last
-            ? '<div class="hero-last-eyebrow">LAST SESSION</div>' +
-              '<div class="hero-last-val">' + esc(daysAgo(last.date)) +
-                (lastGroupLabel ? ' &middot; ' + esc(lastGroupLabel) : '') + '</div>'
-            : '<div class="hero-last-val">No workouts logged yet</div>') +
+      '<div class="stat-pill">' +
+        '<div class="stat-pill-icon trophy">🏆</div>' +
+        '<div>' +
+          '<div class="stat-pill-num">' + prCount + '</div>' +
+          '<div class="stat-pill-label">PRs This Week</div>' +
         '</div>' +
-        '<button class="btn-primary hero-log-btn" onclick="window._nav(\'log\')">' +
-          '<svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">' +
-            '<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>' +
-          '</svg> Log' +
-        '</button>' +
       '</div>' +
+    '</div>' +
+
+    '<div class="week-card">' +
+      '<div class="week-card-title">This Week</div>' +
+      '<div class="week-strip">' + weekHTML + '</div>' +
+    '</div>' +
+
+    '<div class="today-card">' +
+      '<div class="today-card-header">' +
+        '<div>' +
+          '<div class="today-card-sub">Today · ' + new Date().toLocaleDateString("en-US", { weekday: "long" }) + '</div>' +
+          '<div class="today-card-title">' + (todayWorkout ? "Workout Logged" : "Today’s Workout") + '</div>' +
+        '</div>' +
+        (todayWorkout ? '<button class="btn-secondary" onclick="window._openSheet()">+ Add</button>' : '') +
+      '</div>' +
+      todayBody +
     '</div>' +
 
     whoopSectionHTML() +
 
-    (allWorkouts.length === 0
-      ? '<div class="empty-state"><div class="empty-icon">💪</div>' +
-          '<div class="empty-title">No workouts logged yet</div>' +
-          '<div class="empty-sub">Tap Log to record your first session</div></div>'
-      : '<div class="section-title">Recent Workouts</div>' +
-          '<div class="workout-list">' + recentCards + '</div>');
+    (allWorkouts.length > 0
+      ? '<div class="section-title" style="margin-top:4px">Recent Workouts</div>' +
+          '<div class="workout-list">' + recentCards + '</div>'
+      : '');
 }
 
-// Build a workout summary card. Exercise names/notes come from DB so we escape them.
 function workoutCardHTML(w) {
   const groups = [...new Set((w.exercises || []).map(e => e.muscleGroup).filter(Boolean))];
   const tagText = groups.length ? groups.map(esc).join(" &middot; ") : "Mixed";
-
   const rows = (w.exercises || []).map(e => {
     const mw = maxW(e);
     const detail = e.weighted === false
@@ -525,21 +666,84 @@ function workoutCardHTML(w) {
     return '<div class="workout-card-exercise">' +
       '<span class="ex-name">' + esc(e.name) + '</span>' +
       '<span class="ex-sets">' + detail + '</span>' +
-      '</div>';
+    '</div>';
   }).join("");
-
   const cardioRow = w.cardio
     ? '<div class="workout-card-exercise"><span class="ex-name">🚴 Bike</span>' +
         '<span class="ex-sets">' + parseInt(w.cardio) + ' min</span></div>'
     : "";
-
   return '<div class="workout-card">' +
     '<div class="workout-card-header">' +
       '<span class="workout-card-date">' + esc(formatDate(w.date)) + '</span>' +
       '<span class="workout-card-tag">' + tagText + '</span>' +
     '</div>' +
     '<div class="workout-card-exercises">' + rows + cardioRow + '</div>' +
-    '</div>';
+  '</div>';
+}
+
+// ── Bottom Sheet ─────────────────────────────────────────────
+window._openSheet = function() {
+  sheetOpen = true;
+  logState.date = todayStr();
+  const overlay = document.getElementById("workout-sheet");
+  overlay.classList.remove("hidden");
+  renderSheetContent();
+};
+
+window._closeSheet = function() {
+  sheetOpen = false;
+  document.getElementById("workout-sheet").classList.add("hidden");
+  // Clear sheet DOM so IDs don't conflict with log view
+  document.getElementById("sheet-content").innerHTML = "";
+};
+
+function renderSheetContent() {
+  const el = document.getElementById("sheet-content");
+  const groups = Object.keys(EXERCISES);
+  const selectedCount = Object.keys(logState.exercises).length;
+
+  el.innerHTML =
+    '<div class="sheet-header">' +
+      '<div>' +
+        '<div class="sheet-title">Today\'s Workout</div>' +
+        '<div class="sheet-sub">' + esc(formatDate(logState.date)) + '</div>' +
+      '</div>' +
+      '<button class="modal-close" onclick="window._closeSheet()">&#x2715;</button>' +
+    '</div>' +
+
+    (selectedCount > 0
+      ? '<div style="font-size:13px;color:var(--accent);font-weight:600;margin-bottom:12px">' + selectedCount + ' exercise' + (selectedCount !== 1 ? 's' : '') + ' selected</div>'
+      : '') +
+
+    '<div class="muscle-tabs" id="log-tabs">' +
+      groups.map(g => {
+        const cnt = Object.keys(logState.exercises).filter(n =>
+          (EXERCISES[g] || []).find(e => e.name === n)
+        ).length;
+        return '<button class="muscle-tab ' + (g === activeLogGroup ? "active" : "") +
+          '" onclick="window._logTab(\'' + g + '\')">' + esc(g) +
+          (cnt ? ' <span style="opacity:.7">(' + cnt + ')</span>' : '') + '</button>';
+      }).join("") +
+    '</div>' +
+
+    '<div class="exercises-list" id="log-ex-list">' + renderExList(activeLogGroup) + '</div>' +
+
+    '<div class="cardio-section"><div class="section-title">Cardio</div>' +
+      '<div class="cardio-row">' +
+        '<span class="cardio-label">🚴 Bike</span>' +
+        '<input type="number" class="input-field cardio-input" id="log-cardio" min="0" placeholder="0" value="' + esc(logState.cardio) + '">' +
+        '<span class="cardio-unit">min</span>' +
+      '</div></div>' +
+
+    '<div class="notes-section"><label class="input-label">Notes</label>' +
+      '<textarea class="input-field notes-input" id="log-notes" placeholder="How did it feel? Any PRs?"></textarea>' +
+    '</div>' +
+
+    '<button class="btn-primary save-btn" id="save-btn" onclick="window._saveWorkout()">Save Workout</button>';
+
+  document.getElementById("log-notes").value = logState.notes;
+  document.getElementById("log-cardio").addEventListener("change", e => { logState.cardio = e.target.value; });
+  document.getElementById("log-notes").addEventListener("change", e => { logState.notes = e.target.value; });
 }
 
 // ── Log Workout ──────────────────────────────────────────────
@@ -547,10 +751,15 @@ function renderLog() {
   const el = document.getElementById("view-log");
   const groups = Object.keys(EXERCISES);
   const selectedCount = Object.keys(logState.exercises).length;
+  const totalEx = groups.reduce((a, g) => a + EXERCISES[g].length, 0);
+  const progressPct = totalEx > 0 ? (selectedCount / totalEx) * 100 : 0;
 
   el.innerHTML =
-    '<div class="view-header">' +
-      '<h2 class="view-title">Log Workout</h2>' +
+    '<div class="view-header" style="margin-bottom:8px">' +
+      '<div>' +
+        '<div class="view-eyebrow">Log Workout</div>' +
+        '<h2 class="view-title">Exercises</h2>' +
+      '</div>' +
       (selectedCount > 0
         ? '<span style="font-size:13px;color:var(--accent);font-weight:600">' + selectedCount + ' selected</span>'
         : '') +
@@ -558,6 +767,12 @@ function renderLog() {
 
     '<div class="log-date-row"><label class="input-label">Date</label>' +
       '<input type="date" class="input-field" id="log-date" value="' + esc(logState.date) + '">' +
+    '</div>' +
+
+    '<div class="log-progress-bar-track"><div class="log-progress-bar-fill" style="width:' + progressPct.toFixed(1) + '%"></div></div>' +
+    '<div class="log-progress-label">' +
+      '<span>' + selectedCount + ' exercises selected</span>' +
+      '<span>' + (totalEx - selectedCount) + ' remaining</span>' +
     '</div>' +
 
     '<div class="muscle-tabs" id="log-tabs">' +
@@ -586,7 +801,6 @@ function renderLog() {
 
     '<button class="btn-primary save-btn" id="save-btn" onclick="window._saveWorkout()">Save Workout</button>';
 
-  // Set textarea value via property (safe, no XSS risk)
   document.getElementById("log-notes").value = logState.notes;
   document.getElementById("log-date").addEventListener("change", e => { logState.date = e.target.value; });
   document.getElementById("log-cardio").addEventListener("change", e => { logState.cardio = e.target.value; });
@@ -595,18 +809,44 @@ function renderLog() {
 
 function renderExList(group) {
   return (EXERCISES[group] || []).map(ex => {
-    const sel = !!logState.exercises[ex.name];
-    return '<div class="exercise-row ' + (sel ? "selected" : "") + '" id="exrow_' + safeId(ex.name) + '">' +
+    const sel  = !!logState.exercises[ex.name];
+    const sets = logState.exercises[ex.name] || [];
+    const setCount = sets.length;
+    let statusClass = "";
+    if (sel) statusClass = setCount >= 3 ? "done" : "in-progress";
+
+    // PR badge: check if current max beats all-time
+    const curMax = sel ? Math.max(...sets.map(s => parseFloat(s.weight) || 0)) : 0;
+    const histMax = maxWeightEver(ex.name);
+    const isNewPR = sel && curMax > histMax && curMax > 0;
+
+    const safeExId = safeId(ex.name);
+    return '<div class="exercise-row ' + (sel ? "selected" : "") + '" id="exrow_' + safeExId + '">' +
       '<div class="exercise-row-header" onclick="window._toggleEx(\'' + ex.name + '\',\'' + group + '\')">' +
+        '<div class="ex-status-dot ' + statusClass + '"></div>' +
         '<div class="exercise-check ' + (sel ? "checked" : "") + '">' +
           (sel ? '<svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>' : '') +
         '</div>' +
         '<span class="exercise-name">' + esc(ex.name) + '</span>' +
+        (isNewPR ? '<span class="pr-badge new-pr">NEW PR!</span>' : '') +
+        (ex.cues?.length
+          ? '<button class="form-cues-btn" onclick="event.stopPropagation();window._toggleCues(\'' + safeExId + '\')" title="Form cues">Form</button>'
+          : '') +
+      '</div>' +
+      '<div class="form-cues-inline hidden" id="cues_' + safeExId + '">' +
+        (ex.cues || []).map(c =>
+          '<div class="form-cue-inline"><span class="cue-dot-sm"></span>' + esc(c) + '</div>'
+        ).join("") +
       '</div>' +
       (sel ? setLogger(ex.name, logState.exercises[ex.name]) : '') +
     '</div>';
   }).join("");
 }
+
+window._toggleCues = function(safeExName) {
+  const el = document.getElementById("cues_" + safeExName);
+  if (el) el.classList.toggle("hidden");
+};
 
 function setLogger(exName, sets) {
   const rows = sets.map((s, i) =>
@@ -620,7 +860,6 @@ function setLogger(exName, sets) {
         (sets.length === 1 ? ' disabled' : '') + '>&#x2715;</button>' +
     '</div>'
   ).join("");
-
   return '<div class="set-logger" id="sl_' + safeId(exName) + '">' +
     '<div class="set-header-row">' +
       '<span class="set-col-label">#</span>' +
@@ -647,6 +886,45 @@ function reRenderSetLogger(exName) {
   }
 }
 
+function refreshExRow(exName, group) {
+  const safeExId = safeId(exName);
+  const sel  = !!logState.exercises[exName];
+  const sets = logState.exercises[exName] || [];
+  const setCount = sets.length;
+  let statusClass = "";
+  if (sel) statusClass = setCount >= 3 ? "done" : "in-progress";
+  const curMax = sel ? Math.max(...sets.map(s => parseFloat(s.weight) || 0)) : 0;
+  const histMax = maxWeightEver(exName);
+  const isNewPR = sel && curMax > histMax && curMax > 0;
+  const ex = Object.values(EXERCISES).flat().find(e => e.name === exName);
+
+  const row = document.getElementById("exrow_" + safeExId);
+  if (!row) return;
+  row.className = "exercise-row " + (sel ? "selected" : "");
+
+  const header = '<div class="exercise-row-header" onclick="window._toggleEx(\'' + exName + '\',\'' + group + '\')">' +
+    '<div class="ex-status-dot ' + statusClass + '"></div>' +
+    '<div class="exercise-check ' + (sel ? "checked" : "") + '">' +
+      (sel ? '<svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>' : '') +
+    '</div>' +
+    '<span class="exercise-name">' + esc(exName) + '</span>' +
+    (isNewPR ? '<span class="pr-badge new-pr">NEW PR!</span>' : '') +
+    (ex?.cues?.length
+      ? '<button class="form-cues-btn" onclick="event.stopPropagation();window._toggleCues(\'' + safeExId + '\')" title="Form cues">Form</button>'
+      : '') +
+  '</div>';
+
+  const cues = '<div class="form-cues-inline hidden" id="cues_' + safeExId + '">' +
+    (ex?.cues || []).map(c =>
+      '<div class="form-cue-inline"><span class="cue-dot-sm"></span>' + esc(c) + '</div>'
+    ).join("") +
+  '</div>';
+
+  const tmp = document.createElement("div");
+  tmp.innerHTML = header + cues + (sel ? setLogger(exName, logState.exercises[exName]) : "");
+  row.replaceChildren(...tmp.childNodes);
+}
+
 function lastWeightFor(exName) {
   for (const w of allWorkouts) {
     const ex = (w.exercises || []).find(e => e.name === exName);
@@ -670,24 +948,36 @@ window._toggleEx = function(exName, group) {
   } else {
     logState.exercises[exName] = [{ weight: lastWeightFor(exName), reps: "", muscleGroup: group }];
   }
-  const sel = !!logState.exercises[exName];
-  const row = document.getElementById("exrow_" + safeId(exName));
-  row.className = "exercise-row " + (sel ? "selected" : "");
-
-  const header = '<div class="exercise-row-header" onclick="window._toggleEx(\'' + exName + '\',\'' + group + '\')">' +
-    '<div class="exercise-check ' + (sel ? "checked" : "") + '">' +
-      (sel ? '<svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>' : '') +
-    '</div>' +
-    '<span class="exercise-name">' + esc(exName) + '</span>' +
-  '</div>';
-
-  const tmp = document.createElement("div");
-  tmp.innerHTML = header + (sel ? setLogger(exName, logState.exercises[exName]) : "");
-  row.replaceChildren(...tmp.childNodes);
+  refreshExRow(exName, group);
 };
 
 window._updSet = function(exName, i, field, val) {
-  if (logState.exercises[exName]) logState.exercises[exName][i][field] = val;
+  if (logState.exercises[exName]) {
+    logState.exercises[exName][i][field] = val;
+    // Refresh PR badge when weight changes
+    if (field === "weight") {
+      const safeExId = safeId(exName);
+      const sets = logState.exercises[exName];
+      const curMax = Math.max(...sets.map(s => parseFloat(s.weight) || 0));
+      const histMax = maxWeightEver(exName);
+      const isNewPR = curMax > histMax && curMax > 0;
+      const row = document.getElementById("exrow_" + safeExId);
+      if (row) {
+        const existing = row.querySelector(".pr-badge");
+        if (isNewPR && !existing) {
+          const badge = document.createElement("span");
+          badge.className = "pr-badge new-pr";
+          badge.textContent = "NEW PR!";
+          const header = row.querySelector(".exercise-row-header");
+          const formBtn = header?.querySelector(".form-cues-btn");
+          if (formBtn) header.insertBefore(badge, formBtn);
+          else if (header) header.appendChild(badge);
+        } else if (!isNewPR && existing) {
+          existing.remove();
+        }
+      }
+    }
+  }
 };
 
 window._addSet = function(exName) {
@@ -721,8 +1011,7 @@ window._saveWorkout = async function() {
   }
 
   const btn = document.getElementById("save-btn");
-  btn.textContent = "Saving…";
-  btn.disabled = true;
+  if (btn) { btn.textContent = "Saving…"; btn.disabled = true; }
 
   try {
     await saveWorkoutDoc({
@@ -733,12 +1022,12 @@ window._saveWorkout = async function() {
     });
     logState = { date: todayStr(), exercises: {}, cardio: "", notes: "" };
     toast("Workout saved!");
+    if (sheetOpen) window._closeSheet();
     showView("dashboard");
   } catch (e) {
     console.error(e);
     toast("Error saving — please try again");
-    btn.textContent = "Save Workout";
-    btn.disabled = false;
+    if (btn) { btn.textContent = "Save Workout"; btn.disabled = false; }
   }
 };
 
@@ -748,7 +1037,12 @@ function renderProgress() {
   const names = [...new Set(allWorkouts.flatMap(w => (w.exercises || []).map(e => e.name)))].sort();
 
   el.innerHTML =
-    '<div class="view-header"><h2 class="view-title">Progress</h2></div>' +
+    '<div class="view-header">' +
+      '<div>' +
+        '<div class="view-eyebrow">Strength</div>' +
+        '<h2 class="view-title">Progress</h2>' +
+      '</div>' +
+    '</div>' +
     (names.length === 0
       ? '<div class="empty-state"><div class="empty-icon">📈</div>' +
           '<div class="empty-title">No data yet</div>' +
@@ -807,7 +1101,6 @@ window._updateChart = function(exName) {
 
   const statsEl = document.getElementById("prog-stats");
   if (!statsEl || points.length === 0) return;
-
   const pr    = Math.max(...yData);
   const delta = yData[yData.length - 1] - yData[0];
   statsEl.innerHTML =
@@ -828,7 +1121,12 @@ function renderWeightView() {
   const latest = allBodyweights[0];
 
   el.innerHTML =
-    '<div class="view-header"><h2 class="view-title">Body Weight</h2></div>' +
+    '<div class="view-header">' +
+      '<div>' +
+        '<div class="view-eyebrow">Tracking</div>' +
+        '<h2 class="view-title">Body Weight</h2>' +
+      '</div>' +
+    '</div>' +
     '<div class="weight-log-card">' +
       (latest
         ? '<div class="current-weight-display">' +
@@ -876,7 +1174,6 @@ function renderBWChart() {
   const ctx = document.getElementById("bw-chart");
   if (!ctx) return;
   if (weightChart) weightChart.destroy();
-
   weightChart = new Chart(ctx.getContext("2d"), {
     type: "line",
     data: {
@@ -913,96 +1210,6 @@ window._saveBW = async function() {
   }
 };
 
-// ── Library ──────────────────────────────────────────────────
-function renderLibrary() {
-  const el = document.getElementById("view-library");
-  const groups = Object.keys(EXERCISES);
-
-  el.innerHTML =
-    '<div class="view-header">' +
-      '<h2 class="view-title">Library</h2>' +
-      '<button class="btn-secondary" onclick="window._openAddEx()">+ Add</button>' +
-    '</div>' +
-    '<div class="muscle-tabs" id="lib-tabs">' +
-      groups.map(g =>
-        '<button class="muscle-tab ' + (g === activeLibGroup ? "active" : "") +
-        '" onclick="window._libTab(\'' + g + '\')">' + esc(g) + '</button>'
-      ).join("") +
-    '</div>' +
-    '<div class="library-list" id="lib-list">' + renderLibCards(activeLibGroup) + '</div>' +
-
-    '<div class="modal-overlay hidden" id="add-ex-modal">' +
-      '<div class="modal">' +
-        '<div class="modal-header"><h3>Add Exercise</h3>' +
-          '<button class="modal-close" onclick="window._closeAddEx()">&#x2715;</button></div>' +
-        '<div class="modal-body">' +
-          '<label class="input-label">Name</label>' +
-          '<input type="text" class="input-field" id="new-ex-name" placeholder="e.g. Cable Fly">' +
-          '<label class="input-label">Muscle Group</label>' +
-          '<select class="input-field select-field" id="new-ex-group">' +
-            groups.map(g => '<option value="' + esc(g) + '">' + esc(g) + '</option>').join("") +
-          '</select>' +
-          '<label class="input-label">Type</label>' +
-          '<select class="input-field select-field" id="new-ex-weighted">' +
-            '<option value="true">Weighted</option>' +
-            '<option value="false">Bodyweight</option>' +
-          '</select>' +
-          '<button class="btn-primary" onclick="window._saveNewEx()" style="margin-top:8px">Save Exercise</button>' +
-        '</div>' +
-      '</div>' +
-    '</div>';
-}
-
-function renderLibCards(group) {
-  return (EXERCISES[group] || []).map(ex => {
-    const id = "lc_" + safeId(ex.name);
-    return '<div class="library-card" id="' + id + '">' +
-      '<div class="library-card-header" onclick="document.getElementById(\'' + id + '\').classList.toggle(\'expanded\')">' +
-        '<div>' +
-          '<div class="library-card-name">' + esc(ex.name) + '</div>' +
-          '<div class="library-card-tag">' + esc(group) + (ex.weighted === false ? " &middot; Bodyweight" : "") + '</div>' +
-        '</div>' +
-        '<span class="expand-arrow">&#x203A;</span>' +
-      '</div>' +
-      '<div class="library-card-body">' +
-        '<div class="form-cues">' +
-          ex.cues.map(c =>
-            '<div class="form-cue"><span class="cue-dot"></span>' + esc(c) + '</div>'
-          ).join("") +
-        '</div>' +
-        '<a class="youtube-link" target="_blank" rel="noopener"' +
-          ' href="https://www.youtube.com/results?search_query=' + encodeURIComponent(ex.name + " exercise form") + '">' +
-          '&#x25B6; Watch Form Video' +
-        '</a>' +
-      '</div>' +
-    '</div>';
-  }).join("");
-}
-
-window._libTab = function(group) {
-  activeLibGroup = group;
-  document.querySelectorAll("#lib-tabs .muscle-tab").forEach(t => t.classList.remove("active"));
-  document.querySelectorAll("#lib-tabs .muscle-tab").forEach(t => {
-    if (t.textContent.trim() === group) t.classList.add("active");
-  });
-  document.getElementById("lib-list").innerHTML = renderLibCards(group);
-};
-
-window._openAddEx  = () => document.getElementById("add-ex-modal").classList.remove("hidden");
-window._closeAddEx = () => document.getElementById("add-ex-modal").classList.add("hidden");
-
-window._saveNewEx = function() {
-  const nameInput = document.getElementById("new-ex-name");
-  const name = nameInput.value.trim();
-  const group    = document.getElementById("new-ex-group").value;
-  const weighted = document.getElementById("new-ex-weighted").value === "true";
-  if (!name) { toast("Please enter a name"); return; }
-  EXERCISES[group].push({ name, weighted, cues: ["No form cues added yet."] });
-  window._closeAddEx();
-  renderLibrary();
-  window._libTab(group);
-};
-
 // ── Init ─────────────────────────────────────────────────────
 window._nav = showView;
 
@@ -1033,7 +1240,7 @@ async function init() {
     return;
   }
 
-  // Handle Whoop OAuth callback (runs after Whoop redirects back to the app)
+  // Handle Whoop OAuth callback
   const urlParams  = new URLSearchParams(window.location.search);
   const oauthCode  = urlParams.get('code');
   const oauthState = urlParams.get('state');
