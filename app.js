@@ -592,8 +592,8 @@ function renderDashboard() {
 
     '<div class=”quote-card” id=”quote-card”>' +
       '<p class=”quote-text”>”' + esc(savedQuote.text) + '”</p>' +
-      '<cite class=”quote-author”>— ' + esc(savedQuote.author) + '</cite>' +
-      '<button class=”quote-edit-btn” id=”quote-edit-btn”>✏ Edit quote</button>' +
+      '<cite class=”quote-author” style=”display:block”>— ' + esc(savedQuote.author) + '</cite>' +
+      '<button class=”quote-edit-btn” id=”quote-edit-btn” style=”display:block;width:100%”>✏ Edit quote</button>' +
     '</div>' +
 
     (curWeight
