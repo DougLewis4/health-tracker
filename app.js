@@ -231,13 +231,6 @@ let weightChart = null;
 let activeLogGroup = "Legs";
 let whoopData = null;
 let sheetOpen = false;
-let savedQuote = (() => {
-  try {
-    const stored = JSON.parse(localStorage.getItem('daily_quote') || 'null');
-    return stored?.text?.trim() ? stored : DAILY_QUOTE;
-  }
-  catch(e) { return DAILY_QUOTE; }
-})();
 
 let logState = {
   date: todayStr(),
@@ -590,10 +583,9 @@ function renderDashboard() {
   el.innerHTML =
     '<span class="dash-greeting">Good morning</span>' +
 
-    '<div class=”quote-card” id=”quote-card”>' +
-      '<p class=”quote-text”>”' + esc(savedQuote.text) + '”</p>' +
-      '<cite class=”quote-author” style=”display:block”>— ' + esc(savedQuote.author) + '</cite>' +
-      '<button class=”quote-edit-btn” id=”quote-edit-btn” style=”display:block;width:100%”>✏ Edit quote</button>' +
+    '<div class=”quote-card”>' +
+      '<p class=”quote-text”>”' + esc(DAILY_QUOTE.text) + '”</p>' +
+      '<cite class=”quote-author” style=”display:block”>— ' + esc(DAILY_QUOTE.author) + '</cite>' +
     '</div>' +
 
     (curWeight
@@ -662,9 +654,6 @@ function renderDashboard() {
           '<div class="workout-list">' + recentCards + '</div>'
       : '');
 
-  // Attach edit listener to the button (reliable across iOS and desktop)
-  const editBtn = document.getElementById("quote-edit-btn");
-  if (editBtn) editBtn.addEventListener("click", e => { e.stopPropagation(); window._editQuote(); });
 }
 
 function workoutCardHTML(w) {
@@ -692,40 +681,6 @@ function workoutCardHTML(w) {
     '<div class="workout-card-exercises">' + rows + cardioRow + '</div>' +
   '</div>';
 }
-
-// ── Quote Editing ─────────────────────────────────────────────
-window._editQuote = function() {
-  const card = document.getElementById("quote-card");
-  if (!card) return;
-  card.innerHTML =
-    '<label class="input-label" style="display:block;margin-bottom:6px">Quote</label>' +
-    '<textarea class="input-field" id="quote-edit-text" rows="3" ' +
-      'style="margin-bottom:10px;font-family:var(--ff-serif);font-style:italic">' +
-      esc(savedQuote.text) +
-    '</textarea>' +
-    '<label class="input-label" style="display:block;margin-bottom:6px">Author</label>' +
-    '<input class="input-field" id="quote-edit-author" value="' + esc(savedQuote.author) + '" style="margin-bottom:14px">' +
-    '<div style="display:flex;gap:8px;margin-bottom:10px">' +
-      '<button class="btn-primary" onclick="window._saveQuote()" style="flex:1;padding:10px">Save</button>' +
-      '<button class="btn-secondary" onclick="window._renderDashboard()" style="flex:1;padding:10px;justify-content:center">Cancel</button>' +
-    '</div>' +
-    '<button onclick="window._resetQuote()" style="width:100%;font-size:11px;color:var(--text-muted);text-align:center;padding:8px;background:none;border:none;cursor:pointer;letter-spacing:0.05em">Reset to default quote</button>';
-};
-
-window._saveQuote = function() {
-  const text = document.getElementById("quote-edit-text")?.value.trim();
-  const author = document.getElementById("quote-edit-author")?.value.trim();
-  if (!text) { toast("Enter a quote first"); return; }
-  savedQuote = { text, author: author || "Unknown" };
-  localStorage.setItem('daily_quote', JSON.stringify(savedQuote));
-  renderDashboard();
-};
-
-window._resetQuote = function() {
-  localStorage.removeItem('daily_quote');
-  savedQuote = DAILY_QUOTE;
-  renderDashboard();
-};
 
 // ── Bottom Sheet ─────────────────────────────────────────────
 window._openSheet = function() {
@@ -1303,7 +1258,6 @@ window._saveBW = async function() {
 
 // ── Init ─────────────────────────────────────────────────────
 window._nav = showView;
-window._renderDashboard = renderDashboard;
 
 async function init() {
   document.getElementById("header-date").textContent =
