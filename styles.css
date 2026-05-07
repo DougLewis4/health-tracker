@@ -72,12 +72,12 @@ a:hover { text-decoration: underline; }
 }
 .app-main {
   margin-top: var(--header-h);
-  margin-bottom: var(--nav-h);
+  margin-bottom: calc(var(--nav-h) + env(safe-area-inset-bottom, 0px));
   min-height: calc(100vh - var(--header-h) - var(--nav-h));
   background: var(--bg-main);
 }
 .view {
-  padding: 20px 16px 32px;
+  padding: 20px 16px 56px;
   max-width: 600px;
   margin: 0 auto;
 }
@@ -217,19 +217,23 @@ a:hover { text-decoration: underline; }
   margin-bottom: 24px;
   border-top: 3px solid var(--accent);
   box-shadow: var(--shadow-card);
+  position: relative;
+}
+.quote-edit-btn {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  background: none;
+  border: none;
   cursor: pointer;
-  transition: box-shadow 0.15s;
-}
-.quote-card:hover { box-shadow: var(--shadow-hero); }
-.quote-edit-hint {
-  display: block;
-  font-size: 10px;
+  padding: 4px;
   color: var(--text-muted);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  margin-top: 10px;
-  opacity: 0.7;
+  opacity: 0.5;
+  font-size: 14px;
+  line-height: 1;
+  transition: opacity 0.15s;
 }
+.quote-edit-btn:hover { opacity: 1; }
 .quote-text {
   font-family: var(--ff-serif);
   font-size: 19px;

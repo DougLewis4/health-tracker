@@ -231,7 +231,10 @@ let weightChart = null;
 let activeLogGroup = "Legs";
 let whoopData = null;
 let sheetOpen = false;
-let savedQuote = JSON.parse(localStorage.getItem('daily_quote') || 'null') || DAILY_QUOTE;
+let savedQuote = (() => {
+  try { return JSON.parse(localStorage.getItem('daily_quote') || 'null') || DAILY_QUOTE; }
+  catch(e) { return DAILY_QUOTE; }
+})();
 
 let logState = {
   date: todayStr(),
@@ -584,10 +587,10 @@ function renderDashboard() {
   el.innerHTML =
     '<span class="dash-greeting">Good morning</span>' +
 
-    '<div class=”quote-card” onclick=”window._editQuote()”>' +
+    '<div class=”quote-card” id=”quote-card”>' +
+      '<button class=”quote-edit-btn” id=”quote-edit-btn” title=”Edit quote”>✏</button>' +
       '<p class=”quote-text”>”' + esc(savedQuote.text) + '”</p>' +
       '<cite class=”quote-author”>— ' + esc(savedQuote.author) + '</cite>' +
-      '<span class=”quote-edit-hint”>✏ Tap to edit</span>' +
     '</div>' +
 
     (curWeight
@@ -655,6 +658,10 @@ function renderDashboard() {
       ? '<div class="section-title" style="margin-top:4px">Recent Workouts</div>' +
           '<div class="workout-list">' + recentCards + '</div>'
       : '');
+
+  // Attach edit listener to the button (reliable across iOS and desktop)
+  const editBtn = document.getElementById("quote-edit-btn");
+  if (editBtn) editBtn.addEventListener("click", e => { e.stopPropagation(); window._editQuote(); });
 }
 
 function workoutCardHTML(w) {
@@ -685,9 +692,8 @@ function workoutCardHTML(w) {
 
 // ── Quote Editing ─────────────────────────────────────────────
 window._editQuote = function() {
-  const card = document.querySelector(".quote-card");
+  const card = document.getElementById("quote-card");
   if (!card) return;
-  card.onclick = null;
   card.innerHTML =
     '<label class="input-label" style="display:block;margin-bottom:6px">Quote</label>' +
     '<textarea class="input-field" id="quote-edit-text" rows="3" ' +
