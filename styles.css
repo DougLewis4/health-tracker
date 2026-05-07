@@ -24,20 +24,22 @@
   --radius-lg:      16px;
   --ff-display:     'Space Grotesk', system-ui, sans-serif;
   --ff-serif:       'Cormorant Garamond', Georgia, serif;
-  --shadow-card:    0 2px 12px rgba(10, 51, 70, 0.08);
-  --shadow-hero:    0 4px 24px rgba(10, 51, 70, 0.14);
+  --shadow-card:    0 2px 6px rgba(10, 51, 70, 0.07), 0 8px 24px rgba(10, 51, 70, 0.10);
+  --shadow-hero:    0 4px 8px rgba(10, 51, 70, 0.10), 0 12px 32px rgba(10, 51, 70, 0.14);
 }
 
 /* ── Reset ─────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-html, body { height: 100%; }
+html { height: 100%; }
 body {
+  min-height: 100%;
   font-family: 'Inter', system-ui, sans-serif;
   background: var(--bg-base);
   color: var(--text-primary);
   font-size: 15px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+  padding-bottom: calc(var(--nav-h) + env(safe-area-inset-bottom, 0px) + 24px);
 }
 input, button, select, textarea { font-family: inherit; }
 button { cursor: pointer; border: none; background: none; }
@@ -72,7 +74,6 @@ a:hover { text-decoration: underline; }
 }
 .app-main {
   margin-top: var(--header-h);
-  margin-bottom: calc(var(--nav-h) + env(safe-area-inset-bottom, 0px));
   min-height: calc(100vh - var(--header-h) - var(--nav-h));
   background: var(--bg-main);
 }
@@ -235,12 +236,13 @@ a:hover { text-decoration: underline; }
 }
 .quote-edit-btn:hover { opacity: 1; }
 .quote-text {
-  font-family: var(--ff-serif);
+  font-family: 'Cormorant Garamond', Georgia, serif;
   font-size: 19px;
   font-style: italic;
   font-weight: 500;
   color: var(--text-primary);
   line-height: 1.5;
+  padding-right: 28px;
 }
 .quote-author {
   display: block;
