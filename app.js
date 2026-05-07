@@ -231,6 +231,7 @@ let weightChart = null;
 let activeLogGroup = "Legs";
 let whoopData = null;
 let sheetOpen = false;
+let savedQuote = JSON.parse(localStorage.getItem('daily_quote') || 'null') || DAILY_QUOTE;
 
 let logState = {
   date: todayStr(),
@@ -583,9 +584,10 @@ function renderDashboard() {
   el.innerHTML =
     '<span class="dash-greeting">Good morning</span>' +
 
-    '<div class="quote-card">' +
-      '<p class="quote-text">“' + esc(DAILY_QUOTE.text) + '”</p>' +
-      '<cite class="quote-author">— ' + esc(DAILY_QUOTE.author) + '</cite>' +
+    '<div class=”quote-card” onclick=”window._editQuote()”>' +
+      '<p class=”quote-text”>”' + esc(savedQuote.text) + '”</p>' +
+      '<cite class=”quote-author”>— ' + esc(savedQuote.author) + '</cite>' +
+      '<span class=”quote-edit-hint”>✏ Tap to edit</span>' +
     '</div>' +
 
     (curWeight
@@ -681,6 +683,34 @@ function workoutCardHTML(w) {
   '</div>';
 }
 
+// ── Quote Editing ─────────────────────────────────────────────
+window._editQuote = function() {
+  const card = document.querySelector(".quote-card");
+  if (!card) return;
+  card.onclick = null;
+  card.innerHTML =
+    '<label class="input-label" style="display:block;margin-bottom:6px">Quote</label>' +
+    '<textarea class="input-field" id="quote-edit-text" rows="3" ' +
+      'style="margin-bottom:10px;font-family:var(--ff-serif);font-style:italic">' +
+      esc(savedQuote.text) +
+    '</textarea>' +
+    '<label class="input-label" style="display:block;margin-bottom:6px">Author</label>' +
+    '<input class="input-field" id="quote-edit-author" value="' + esc(savedQuote.author) + '" style="margin-bottom:14px">' +
+    '<div style="display:flex;gap:8px">' +
+      '<button class="btn-primary" onclick="window._saveQuote()" style="flex:1;padding:10px">Save</button>' +
+      '<button class="btn-secondary" onclick="renderDashboard()" style="flex:1;padding:10px;justify-content:center">Cancel</button>' +
+    '</div>';
+};
+
+window._saveQuote = function() {
+  const text = document.getElementById("quote-edit-text")?.value.trim();
+  const author = document.getElementById("quote-edit-author")?.value.trim();
+  if (!text) { toast("Enter a quote first"); return; }
+  savedQuote = { text, author: author || "Unknown" };
+  localStorage.setItem('daily_quote', JSON.stringify(savedQuote));
+  renderDashboard();
+};
+
 // ── Bottom Sheet ─────────────────────────────────────────────
 window._openSheet = function() {
   sheetOpen = true;
@@ -701,8 +731,9 @@ function renderSheetContent() {
   const el = document.getElementById("sheet-content");
   const groups = Object.keys(EXERCISES);
   const selectedCount = Object.keys(logState.exercises).length;
+  const bikeAdded = !!logState.cardio;
 
-  el.innerHTML =
+  const scrollHTML =
     '<div class="sheet-header">' +
       '<div>' +
         '<div class="sheet-title">Today\'s Workout</div>' +
@@ -711,9 +742,10 @@ function renderSheetContent() {
       '<button class="modal-close" onclick="window._closeSheet()">&#x2715;</button>' +
     '</div>' +
 
-    (selectedCount > 0
-      ? '<div style="font-size:13px;color:var(--accent);font-weight:600;margin-bottom:12px">' + selectedCount + ' exercise' + (selectedCount !== 1 ? 's' : '') + ' selected</div>'
-      : '') +
+    '<div id="sheet-selected-count" style="font-size:13px;color:var(--accent);font-weight:600;margin-bottom:12px;' +
+      (selectedCount === 0 ? 'display:none' : '') + '">' +
+      selectedCount + ' exercise' + (selectedCount !== 1 ? 's' : '') + ' selected' +
+    '</div>' +
 
     '<div class="muscle-tabs" id="log-tabs">' +
       groups.map(g => {
@@ -726,25 +758,66 @@ function renderSheetContent() {
       }).join("") +
     '</div>' +
 
-    '<div class="exercises-list" id="log-ex-list">' + renderExList(activeLogGroup) + '</div>' +
+    '<div class="exercises-list" id="log-ex-list">' + renderSheetExList(activeLogGroup) + '</div>' +
 
-    '<div class="cardio-section"><div class="section-title">Cardio</div>' +
-      '<div class="cardio-row">' +
-        '<span class="cardio-label">🚴 Bike</span>' +
-        '<input type="number" class="input-field cardio-input" id="log-cardio" min="0" placeholder="0" value="' + esc(logState.cardio) + '">' +
-        '<span class="cardio-unit">min</span>' +
-      '</div></div>' +
+    '<div class="cardio-section">' +
+      '<div class="section-title">Cardio</div>' +
+      (bikeAdded
+        ? '<div class="sheet-bike-row">' +
+            '<span class="sheet-bike-name">🚴 Bike</span>' +
+            '<input type="number" class="input-field cardio-input" id="log-cardio" min="0" placeholder="0" value="' + esc(String(logState.cardio || "")) + '" onchange="logState.cardio=this.value">' +
+            '<span class="cardio-unit">min</span>' +
+            '<button class="btn-sheet-remove" onclick="logState.cardio=\'\';renderSheetContent()">Remove</button>' +
+          '</div>'
+        : '<button class="btn-sheet-add" style="width:100%;padding:10px;display:block;text-align:center" onclick="logState.cardio=\'30\';renderSheetContent()">+ Add Bike</button>') +
+    '</div>';
 
-    '<div class="notes-section"><label class="input-label">Notes</label>' +
-      '<textarea class="input-field notes-input" id="log-notes" placeholder="How did it feel? Any PRs?"></textarea>' +
-    '</div>' +
-
-    '<button class="btn-primary save-btn" id="save-btn" onclick="window._saveWorkout()">Save Workout</button>';
-
-  document.getElementById("log-notes").value = logState.notes;
-  document.getElementById("log-cardio").addEventListener("change", e => { logState.cardio = e.target.value; });
-  document.getElementById("log-notes").addEventListener("change", e => { logState.notes = e.target.value; });
+  el.innerHTML =
+    '<div class="sheet-scroll">' + scrollHTML + '</div>' +
+    '<div class="sheet-footer">' +
+      '<button class="btn-primary save-btn" id="save-btn" onclick="window._saveWorkout()" style="width:100%;padding:15px">Save Workout</button>' +
+    '</div>';
 }
+
+function renderSheetExList(group) {
+  return (EXERCISES[group] || []).map(ex => {
+    const sel = !!logState.exercises[ex.name];
+    const safeExId = safeId(ex.name);
+    return '<div class="sheet-ex-row ' + (sel ? "selected" : "") + '" id="sheetex_' + safeExId + '">' +
+      '<span class="sheet-ex-name">' + esc(ex.name) + '</span>' +
+      '<button class="' + (sel ? "btn-sheet-remove" : "btn-sheet-add") + '" ' +
+        'onclick="window._sheetToggleEx(\'' + ex.name + '\',\'' + group + '\')">' +
+        (sel ? '✓ Added' : '+ Add') +
+      '</button>' +
+    '</div>';
+  }).join("");
+}
+
+window._sheetToggleEx = function(exName, group) {
+  if (logState.exercises[exName]) {
+    delete logState.exercises[exName];
+  } else {
+    logState.exercises[exName] = [{ weight: lastWeightFor(exName), reps: "", muscleGroup: group }];
+  }
+  // Refresh exercise list
+  document.getElementById("log-ex-list").innerHTML = renderSheetExList(group);
+  // Update selected count label
+  const cnt = Object.keys(logState.exercises).length;
+  const countEl = document.getElementById("sheet-selected-count");
+  if (countEl) {
+    countEl.style.display = cnt > 0 ? "" : "none";
+    countEl.textContent = cnt + ' exercise' + (cnt !== 1 ? 's' : '') + ' selected';
+  }
+  // Update tab count badges
+  const groups = Object.keys(EXERCISES);
+  document.querySelectorAll("#log-tabs .muscle-tab").forEach((tab, i) => {
+    const g = groups[i];
+    const groupCnt = Object.keys(logState.exercises).filter(n =>
+      (EXERCISES[g] || []).find(e => e.name === n)
+    ).length;
+    tab.innerHTML = esc(g) + (groupCnt ? ' <span style="opacity:.7">(' + groupCnt + ')</span>' : '');
+  });
+};
 
 // ── Log Workout ──────────────────────────────────────────────
 function renderLog() {
@@ -939,7 +1012,9 @@ window._logTab = function(group) {
   document.querySelectorAll("#log-tabs .muscle-tab").forEach(t => {
     if (t.textContent.trim().startsWith(group)) t.classList.add("active");
   });
-  document.getElementById("log-ex-list").innerHTML = renderExList(group);
+  document.getElementById("log-ex-list").innerHTML = sheetOpen
+    ? renderSheetExList(group)
+    : renderExList(group);
 };
 
 window._toggleEx = function(exName, group) {
