@@ -232,7 +232,10 @@ let activeLogGroup = "Legs";
 let whoopData = null;
 let sheetOpen = false;
 let savedQuote = (() => {
-  try { return JSON.parse(localStorage.getItem('daily_quote') || 'null') || DAILY_QUOTE; }
+  try {
+    const stored = JSON.parse(localStorage.getItem('daily_quote') || 'null');
+    return stored?.text?.trim() ? stored : DAILY_QUOTE;
+  }
   catch(e) { return DAILY_QUOTE; }
 })();
 
@@ -702,10 +705,11 @@ window._editQuote = function() {
     '</textarea>' +
     '<label class="input-label" style="display:block;margin-bottom:6px">Author</label>' +
     '<input class="input-field" id="quote-edit-author" value="' + esc(savedQuote.author) + '" style="margin-bottom:14px">' +
-    '<div style="display:flex;gap:8px">' +
+    '<div style="display:flex;gap:8px;margin-bottom:10px">' +
       '<button class="btn-primary" onclick="window._saveQuote()" style="flex:1;padding:10px">Save</button>' +
       '<button class="btn-secondary" onclick="window._renderDashboard()" style="flex:1;padding:10px;justify-content:center">Cancel</button>' +
-    '</div>';
+    '</div>' +
+    '<button onclick="window._resetQuote()" style="width:100%;font-size:11px;color:var(--text-muted);text-align:center;padding:8px;background:none;border:none;cursor:pointer;letter-spacing:0.05em">Reset to default quote</button>';
 };
 
 window._saveQuote = function() {
@@ -714,6 +718,12 @@ window._saveQuote = function() {
   if (!text) { toast("Enter a quote first"); return; }
   savedQuote = { text, author: author || "Unknown" };
   localStorage.setItem('daily_quote', JSON.stringify(savedQuote));
+  renderDashboard();
+};
+
+window._resetQuote = function() {
+  localStorage.removeItem('daily_quote');
+  savedQuote = DAILY_QUOTE;
   renderDashboard();
 };
 
