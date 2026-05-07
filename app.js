@@ -588,9 +588,9 @@ function renderDashboard() {
     '<span class="dash-greeting">Good morning</span>' +
 
     '<div class=”quote-card” id=”quote-card”>' +
-      '<button class=”quote-edit-btn” id=”quote-edit-btn” title=”Edit quote”>✏</button>' +
       '<p class=”quote-text”>”' + esc(savedQuote.text) + '”</p>' +
       '<cite class=”quote-author”>— ' + esc(savedQuote.author) + '</cite>' +
+      '<button class=”quote-edit-btn” id=”quote-edit-btn”>✏ Edit quote</button>' +
     '</div>' +
 
     (curWeight
@@ -704,7 +704,7 @@ window._editQuote = function() {
     '<input class="input-field" id="quote-edit-author" value="' + esc(savedQuote.author) + '" style="margin-bottom:14px">' +
     '<div style="display:flex;gap:8px">' +
       '<button class="btn-primary" onclick="window._saveQuote()" style="flex:1;padding:10px">Save</button>' +
-      '<button class="btn-secondary" onclick="renderDashboard()" style="flex:1;padding:10px;justify-content:center">Cancel</button>' +
+      '<button class="btn-secondary" onclick="window._renderDashboard()" style="flex:1;padding:10px;justify-content:center">Cancel</button>' +
     '</div>';
 };
 
@@ -1293,6 +1293,7 @@ window._saveBW = async function() {
 
 // ── Init ─────────────────────────────────────────────────────
 window._nav = showView;
+window._renderDashboard = renderDashboard;
 
 async function init() {
   document.getElementById("header-date").textContent =
