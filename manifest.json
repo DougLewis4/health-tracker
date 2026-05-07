@@ -1,11 +1,11 @@
 {
-  "name": "LIFT — Fitness Tracker",
-  "short_name": "LIFT",
+  "name": "Vitruvius — Fitness Tracker",
+  "short_name": "Vitruvius",
   "description": "Personal fitness and strength tracker",
   "start_url": "/health-tracker/",
   "display": "standalone",
-  "background_color": "#0e1b27",
-  "theme_color": "#0e1b27",
+  "background_color": "#f4ede0",
+  "theme_color": "#f4ede0",
   "icons": [
     {
       "src": "icon.png",
