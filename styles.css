@@ -210,8 +210,8 @@ a:hover { text-decoration: underline; }
   margin-bottom: 14px;
 }
 
-/* Quote Card */
-.quote-card {
+/* Daily Inspiration Block */
+.inspire-block {
   background: #ffffff;
   border-radius: var(--radius);
   padding: 22px 20px 14px;
@@ -220,24 +220,22 @@ a:hover { text-decoration: underline; }
   border-top: 3px solid var(--accent);
   box-shadow: var(--shadow-card);
 }
-.quote-text {
+.inspire-text {
   font-family: 'Cormorant Garamond', Georgia, serif;
   font-size: 19px;
   font-style: italic;
   font-weight: 500;
   color: var(--text-primary);
   line-height: 1.5;
-  padding-right: 28px;
 }
-.quote-author {
+.inspire-author {
   display: block;
-  font-family: var(--ff-serif);
-  font-size: 13px;
-  font-weight: 500;
+  font-family: 'Cormorant Garamond', Georgia, serif;
+  font-size: 14px;
+  font-style: italic;
+  font-weight: 400;
   color: var(--text-muted);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  margin-top: 12px;
+  margin-top: 10px;
 }
 
 /* Body Weight Section */

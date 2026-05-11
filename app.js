@@ -590,9 +590,9 @@ function renderDashboard() {
   el.innerHTML =
     '<span class="dash-greeting">' + getGreeting() + '</span>' +
 
-    '<div class=”quote-card” style=”background:#ffffff;border:1px solid rgba(184,115,51,0.30);border-top:3px solid #b87333;border-radius:10px;padding:22px 20px 14px;margin-bottom:24px;box-shadow:0 2px 6px rgba(10,51,70,0.07),0 8px 24px rgba(10,51,70,0.10)”>' +
-      '<p class=”quote-text” style=”font-family:\'Cormorant Garamond\',Georgia,serif;font-size:19px;font-style:italic;font-weight:500;color:#0a3346;line-height:1.5”>”' + esc(DAILY_QUOTE.text) + '”</p>' +
-      '<cite class=”quote-author” style=”display:block;font-family:\'Cormorant Garamond\',Georgia,serif;font-size:13px;font-weight:500;color:#a89c86;letter-spacing:0.12em;text-transform:uppercase;margin-top:12px”>— ' + esc(DAILY_QUOTE.author) + '</cite>' +
+    '<div class=”inspire-block”>' +
+      '<p class=”inspire-text”>”' + esc(DAILY_QUOTE.text) + '”</p>' +
+      '<cite class=”inspire-author”>— ' + esc(DAILY_QUOTE.author) + '</cite>' +
     '</div>' +
 
     (curWeight
