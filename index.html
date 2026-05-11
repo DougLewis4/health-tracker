@@ -99,5 +99,49 @@
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script type="module" src="app.js"></script>
+  <script>
+    (function() {
+      function styleQuoteCard() {
+        var dashboard = document.getElementById('view-dashboard');
+        if (!dashboard) return;
+        for (var i = 0; i < dashboard.children.length; i++) {
+          var card = dashboard.children[i];
+          if (card.tagName === 'DIV' && card.querySelector('cite')) {
+            card.style.background = '#ffffff';
+            card.style.border = '1px solid rgba(184,115,51,0.30)';
+            card.style.borderTop = '3px solid #b87333';
+            card.style.borderRadius = '10px';
+            card.style.padding = '22px 20px 14px';
+            card.style.marginBottom = '24px';
+            card.style.boxShadow = '0 2px 6px rgba(10,51,70,0.07),0 8px 24px rgba(10,51,70,0.10)';
+            var p = card.querySelector('p');
+            if (p) {
+              p.style.fontFamily = "'Cormorant Garamond',Georgia,serif";
+              p.style.fontSize = '19px';
+              p.style.fontStyle = 'italic';
+              p.style.fontWeight = '500';
+              p.style.color = '#0a3346';
+              p.style.lineHeight = '1.5';
+            }
+            var cite = card.querySelector('cite');
+            if (cite) {
+              cite.style.display = 'block';
+              cite.style.fontFamily = "'Cormorant Garamond',Georgia,serif";
+              cite.style.fontSize = '14px';
+              cite.style.fontStyle = 'italic';
+              cite.style.fontWeight = '400';
+              cite.style.color = '#a89c86';
+              cite.style.marginTop = '10px';
+            }
+            break;
+          }
+        }
+      }
+      var dashboard = document.getElementById('view-dashboard');
+      if (dashboard) {
+        new MutationObserver(styleQuoteCard).observe(dashboard, {childList: true});
+      }
+    })();
+  </script>
 </body>
 </html>
