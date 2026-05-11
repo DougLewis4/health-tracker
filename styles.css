@@ -30,7 +30,7 @@
 
 /* ── Reset ─────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-html { height: 100%; }
+html { height: 100%; background: var(--bg-base); }
 body {
   min-height: 100%;
   font-family: 'Inter', system-ui, sans-serif;
