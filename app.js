@@ -265,6 +265,13 @@ function toast(msg) {
   setTimeout(() => el.remove(), 2800);
 }
 
+function getGreeting() {
+  const hour = new Date().getHours();
+  if (hour < 12) return "Good morning";
+  if (hour < 17) return "Good afternoon";
+  return "Good evening";
+}
+
 function safeId(str) {
   return str.replace(/[^a-zA-Z0-9]/g, "_");
 }
@@ -529,7 +536,7 @@ function renderDashboard() {
 
   // Weight progress bar
   let progressPct = 0;
-  if (startWeight && curWeight && GOAL_WEIGHT > startWeight) {
+  if (startWeight && curWeight && startWeight !== GOAL_WEIGHT) {
     progressPct = Math.min(100, Math.max(0,
       ((curWeight - startWeight) / (GOAL_WEIGHT - startWeight)) * 100
     ));
@@ -581,11 +588,11 @@ function renderDashboard() {
   const recentCards = allWorkouts.slice(0, 3).map(workoutCardHTML).join("");
 
   el.innerHTML =
-    '<span class="dash-greeting">Good morning</span>' +
+    '<span class="dash-greeting">' + getGreeting() + '</span>' +
 
-    '<div class=”quote-card” style=”background:#fbf6ec;border:1px solid rgba(184,115,51,0.30);border-top:3px solid #b87333;border-radius:10px;padding:22px 20px 14px;margin-bottom:24px;box-shadow:0 2px 6px rgba(10,51,70,0.07),0 8px 24px rgba(10,51,70,0.10)”>' +
-      '<p class=”quote-text” style=”font-family:\'Cormorant Garamond\',Georgia,serif;font-size:19px;font-style:italic;font-weight:500;color:#0a3346;line-height:1.5”>”' + esc(DAILY_QUOTE.text) + '”</p>' +
-      '<cite class=”quote-author” style=”display:block;font-size:10px;font-weight:700;color:#a89c86;letter-spacing:0.18em;text-transform:uppercase;margin-top:12px”>— ' + esc(DAILY_QUOTE.author) + '</cite>' +
+    '<div class=”quote-card”>' +
+      '<p class=”quote-text”>”' + esc(DAILY_QUOTE.text) + '”</p>' +
+      '<cite class=”quote-author”>— ' + esc(DAILY_QUOTE.author) + '</cite>' +
     '</div>' +
 
     (curWeight
@@ -731,7 +738,7 @@ function renderSheetContent() {
       selectedCount + ' exercise' + (selectedCount !== 1 ? 's' : '') + ' selected' +
     '</div>' +
 
-    '<div class="muscle-tabs" id="log-tabs">' +
+    '<div class="muscle-tabs" id="sheet-log-tabs">' +
       groups.map(g => {
         const cnt = Object.keys(logState.exercises).filter(n =>
           (EXERCISES[g] || []).find(e => e.name === n)
@@ -794,7 +801,7 @@ window._sheetToggleEx = function(exName, group) {
   }
   // Update tab count badges
   const groups = Object.keys(EXERCISES);
-  document.querySelectorAll("#log-tabs .muscle-tab").forEach((tab, i) => {
+  document.querySelectorAll("#sheet-log-tabs .muscle-tab").forEach((tab, i) => {
     const g = groups[i];
     const groupCnt = Object.keys(logState.exercises).filter(n =>
       (EXERCISES[g] || []).find(e => e.name === n)
@@ -817,9 +824,7 @@ function renderLog() {
         '<div class="view-eyebrow">Log Workout</div>' +
         '<h2 class="view-title">Exercises</h2>' +
       '</div>' +
-      (selectedCount > 0
-        ? '<span style="font-size:13px;color:var(--accent);font-weight:600">' + selectedCount + ' selected</span>'
-        : '') +
+      '<span id="log-selected-count" style="font-size:13px;color:var(--accent);font-weight:600' + (selectedCount === 0 ? ';display:none' : '') + '">' + selectedCount + ' selected</span>' +
     '</div>' +
 
     '<div class="log-date-row"><label class="input-label">Date</label>' +
@@ -992,8 +997,9 @@ function lastWeightFor(exName) {
 
 window._logTab = function(group) {
   activeLogGroup = group;
-  document.querySelectorAll("#log-tabs .muscle-tab").forEach(t => t.classList.remove("active"));
-  document.querySelectorAll("#log-tabs .muscle-tab").forEach(t => {
+  const tabsId = sheetOpen ? "#sheet-log-tabs" : "#log-tabs";
+  document.querySelectorAll(tabsId + " .muscle-tab").forEach(t => t.classList.remove("active"));
+  document.querySelectorAll(tabsId + " .muscle-tab").forEach(t => {
     if (t.textContent.trim().startsWith(group)) t.classList.add("active");
   });
   document.getElementById("log-ex-list").innerHTML = sheetOpen
@@ -1008,6 +1014,21 @@ window._toggleEx = function(exName, group) {
     logState.exercises[exName] = [{ weight: lastWeightFor(exName), reps: "", muscleGroup: group }];
   }
   refreshExRow(exName, group);
+  // Update tab count badges and header selected count (same pattern used in _sheetToggleEx)
+  const groups = Object.keys(EXERCISES);
+  document.querySelectorAll("#log-tabs .muscle-tab").forEach((tab, i) => {
+    const g = groups[i];
+    const groupCnt = Object.keys(logState.exercises).filter(n =>
+      (EXERCISES[g] || []).find(e => e.name === n)
+    ).length;
+    tab.innerHTML = esc(g) + (groupCnt ? ' <span style="opacity:.7">(' + groupCnt + ')</span>' : '');
+  });
+  const cnt = Object.keys(logState.exercises).length;
+  const countEl = document.getElementById("log-selected-count");
+  if (countEl) {
+    countEl.style.display = cnt > 0 ? "" : "none";
+    countEl.textContent = cnt + ' selected';
+  }
 };
 
 window._updSet = function(exName, i, field, val) {
@@ -1141,19 +1162,19 @@ window._updateChart = function(exName) {
     data: {
       labels: points.map(p => formatDate(p.date)),
       datasets: [{ data: yData,
-        borderColor: "#b2d7c7", backgroundColor: "rgba(178,215,199,0.08)",
-        borderWidth: 2.5, pointBackgroundColor: "#b2d7c7",
+        borderColor: "#b87333", backgroundColor: "rgba(184,115,51,0.08)",
+        borderWidth: 2.5, pointBackgroundColor: "#b87333",
         pointRadius: 5, pointHoverRadius: 7, tension: 0.35, fill: true }]
     },
     options: {
       responsive: true,
       plugins: { legend: { display: false }, tooltip: {
-        backgroundColor: "#172433", borderColor: "#1e3450", borderWidth: 1,
-        titleColor: "#fff", bodyColor: "#7fa8c8", padding: 12 }},
+        backgroundColor: "#fbf6ec", borderColor: "rgba(184,115,51,0.30)", borderWidth: 1,
+        titleColor: "#0a3346", bodyColor: "#7a6f5c", padding: 12 }},
       scales: {
-        x: { ticks: { color: "#7fa8c8", maxRotation: 40, font: { size: 11 } }, grid: { color: "#1e3450" } },
-        y: { ticks: { color: "#7fa8c8" }, grid: { color: "#1e3450" },
-             title: { display: true, text: isBodyweight ? "Reps" : "Max Weight (lbs)", color: "#4a728f" } }
+        x: { ticks: { color: "#a89c86", maxRotation: 40, font: { size: 11 } }, grid: { color: "rgba(10,51,70,0.08)" } },
+        y: { ticks: { color: "#a89c86" }, grid: { color: "rgba(10,51,70,0.08)" },
+             title: { display: true, text: isBodyweight ? "Reps" : "Max Weight (lbs)", color: "#7a6f5c" } }
       }
     }
   });
@@ -1220,7 +1241,7 @@ function weightStatsHTML() {
     '<div class="stat-card"><div class="stat-label">Starting</div>' +
       '<div class="stat-value">' + first + '</div><div class="stat-sub">lbs</div></div>' +
     '<div class="stat-card"><div class="stat-label">Change</div>' +
-      '<div class="stat-value ' + (delta <= 0 ? "positive" : "negative") + '">' + (delta > 0 ? "+" : "") + delta + '</div>' +
+      '<div class="stat-value ' + (delta >= 0 ? "positive" : "negative") + '">' + (delta > 0 ? "+" : "") + delta + '</div>' +
       '<div class="stat-sub">lbs</div></div>' +
     '<div class="stat-card"><div class="stat-label">Range</div>' +
       '<div class="stat-value" style="font-size:18px">' + low + '–' + high + '</div>' +
@@ -1238,19 +1259,19 @@ function renderBWChart() {
     data: {
       labels: sorted.map(d => formatDate(d.date)),
       datasets: [{ data: sorted.map(d => d.weight),
-        borderColor: "#b2d7c7", backgroundColor: "rgba(178,215,199,0.08)",
-        borderWidth: 2.5, pointBackgroundColor: "#b2d7c7",
+        borderColor: "#b87333", backgroundColor: "rgba(184,115,51,0.08)",
+        borderWidth: 2.5, pointBackgroundColor: "#b87333",
         pointRadius: 4, tension: 0.35, fill: true }]
     },
     options: {
       responsive: true,
       plugins: { legend: { display: false }, tooltip: {
-        backgroundColor: "#172433", borderColor: "#1e3450", borderWidth: 1,
-        titleColor: "#fff", bodyColor: "#7fa8c8", padding: 12 }},
+        backgroundColor: "#fbf6ec", borderColor: "rgba(184,115,51,0.30)", borderWidth: 1,
+        titleColor: "#0a3346", bodyColor: "#7a6f5c", padding: 12 }},
       scales: {
-        x: { ticks: { color: "#7fa8c8", maxRotation: 40, font: { size: 11 } }, grid: { color: "#1e3450" } },
-        y: { ticks: { color: "#7fa8c8" }, grid: { color: "#1e3450" },
-             title: { display: true, text: "lbs", color: "#4a728f" } }
+        x: { ticks: { color: "#a89c86", maxRotation: 40, font: { size: 11 } }, grid: { color: "rgba(10,51,70,0.08)" } },
+        y: { ticks: { color: "#a89c86" }, grid: { color: "rgba(10,51,70,0.08)" },
+             title: { display: true, text: "lbs", color: "#7a6f5c" } }
       }
     }
   });
