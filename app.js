@@ -542,6 +542,10 @@ function renderDashboard() {
     ));
   }
   const lbsToGo = curWeight ? Math.max(0, GOAL_WEIGHT - curWeight).toFixed(1) : "—";
+  const yearStart  = new Date('2026-01-01T12:00:00');
+  const yearEnd    = new Date('2026-12-31T12:00:00');
+  const yearNow    = new Date(todayStr() + 'T12:00:00');
+  const yearPct    = Math.min(100, Math.max(0, (yearNow - yearStart) / (yearEnd - yearStart) * 100));
 
   // Week strip
   const weekHTML = weekDays.map(d => {
@@ -612,6 +616,15 @@ function renderDashboard() {
           '<div class="goal-bar-labels">' +
             '<span>' + (startWeight ?? "—") + ' lbs start</span>' +
             '<span>' + lbsToGo + ' lbs to go</span>' +
+          '</div>' +
+          '<div style="margin-top:12px;display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">' +
+            '<span style="font-size:10px;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-muted)">Year elapsed</span>' +
+            '<span style="font-size:10px;color:var(--text-muted)">' + yearPct.toFixed(0) + '%</span>' +
+          '</div>' +
+          '<div class="goal-bar-track"><div class="goal-bar-fill" style="width:' + yearPct.toFixed(1) + '%;background:rgba(10,51,70,0.35)"></div></div>' +
+          '<div class="goal-bar-labels">' +
+            '<span>Jan 1</span>' +
+            '<span>Dec 31, 2026</span>' +
           '</div>' +
         '</div>'
       : '<div class="bw-section">' +
