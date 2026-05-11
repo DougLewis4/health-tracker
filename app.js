@@ -616,14 +616,27 @@ function renderDashboard() {
 
     '<div class="stats-row">' +
       '<div class="stat-pill">' +
-        '<div class="stat-pill-icon fire">🔥</div>' +
+        '<div class="stat-pill-icon fire">' +
+          '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="color:var(--accent)">' +
+            '<path d="M8.5 14.5A2.5 2.5 0 0011 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 11-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 002.5 3z"/>' +
+          '</svg>' +
+        '</div>' +
         '<div>' +
           '<div class="stat-pill-num">' + streak + '</div>' +
           '<div class="stat-pill-label">Day Streak</div>' +
         '</div>' +
       '</div>' +
       '<div class="stat-pill">' +
-        '<div class="stat-pill-icon trophy">🏆</div>' +
+        '<div class="stat-pill-icon trophy">' +
+          '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="color:var(--success)">' +
+            '<path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/>' +
+            '<path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/>' +
+            '<path d="M4 22h16"/>' +
+            '<path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 19.75 7 21.83 7 22"/>' +
+            '<path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 19.75 17 21.83 17 22"/>' +
+            '<path d="M18 2H6v7a6 6 0 0 0 12 0V2z"/>' +
+          '</svg>' +
+        '</div>' +
         '<div>' +
           '<div class="stat-pill-num">' + prCount + '</div>' +
           '<div class="stat-pill-label">PRs This Week</div>' +
