@@ -474,7 +474,7 @@ function whoopSectionHTML() {
   const strain = cycle?.score?.strain           ? cycle.score.strain.toFixed(1)            : null;
   let scoreColor, scoreLabel;
   if (score === null)   { scoreColor = '#4a728f'; scoreLabel = '—'; }
-  else if (score >= 67) { scoreColor = '#2ecc71'; scoreLabel = 'Peak'; }
+  else if (score >= 67) { scoreColor = '#3a7d5c'; scoreLabel = 'Peak'; }
   else if (score >= 34) { scoreColor = '#f0a500'; scoreLabel = 'Good'; }
   else                  { scoreColor = '#e05050'; scoreLabel = 'Low'; }
   const pct = score ?? 0;
