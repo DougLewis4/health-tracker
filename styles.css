@@ -814,6 +814,37 @@ a:hover { text-decoration: underline; }
 }
 .add-set-btn:hover { background: var(--accent-dim); }
 
+/* ── Exercise history (inline in set logger) ───────────────── */
+.ex-history {
+  margin-top: 12px;
+  padding: 10px 12px;
+  background: var(--bg-main);
+  border-radius: var(--radius-sm);
+}
+.ex-history-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+.ex-history-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 3px 0;
+}
+.ex-history-date {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.ex-history-summary {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
 /* ── Cardio & Notes ────────────────────────────────────────── */
 .cardio-section, .notes-section {
   background: var(--bg-card);

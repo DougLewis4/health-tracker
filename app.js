@@ -923,6 +923,33 @@ window._toggleCues = function(safeExName) {
   if (el) el.classList.toggle("hidden");
 };
 
+function exHistoryHTML(exName) {
+  const history = allWorkouts
+    .filter(w => w.date !== logState.date && w.exercises?.some(e => e.name === exName))
+    .slice(0, 5);
+  if (!history.length) return '';
+  const rows = history.map(w => {
+    const ex = w.exercises.find(e => e.name === exName);
+    const sets = ex?.sets || [];
+    if (!sets.length) return '';
+    const d = new Date(w.date + 'T12:00:00');
+    const dateStr = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    const repsArr = sets.map(s => parseInt(s.reps) || 0).filter(r => r > 0);
+    const avgReps = repsArr.length ? Math.round(repsArr.reduce((a, b) => a + b, 0) / repsArr.length) : 0;
+    const maxW = Math.max(...sets.map(s => parseFloat(s.weight) || 0));
+    let summary = sets.length + '×' + avgReps;
+    if (maxW > 0) summary += ' @ ' + maxW + ' lbs';
+    return '<div class="ex-history-row">' +
+      '<span class="ex-history-date">' + esc(dateStr) + '</span>' +
+      '<span class="ex-history-summary">' + esc(summary) + '</span>' +
+    '</div>';
+  }).join('');
+  return '<div class="ex-history">' +
+    '<div class="ex-history-label">Recent</div>' +
+    rows +
+  '</div>';
+}
+
 function setLogger(exName, sets) {
   const rows = sets.map((s, i) =>
     '<div class="set-row">' +
@@ -944,6 +971,7 @@ function setLogger(exName, sets) {
     '</div>' +
     rows +
     '<button class="add-set-btn" onclick="window._addSet(\'' + exName + '\')">+ Add Set</button>' +
+    exHistoryHTML(exName) +
   '</div>';
 }
 
