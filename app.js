@@ -1716,6 +1716,7 @@ function showAuth(mode, message) {
       '<img class="auth-logo" src="icons/icon-192.png?v=3" alt="" width="96" height="96">' +
       '<div class="auth-mark">Vitruvius</div>' +
       body +
+      '<a class="auth-privacy" href="privacy.html" target="_blank" rel="noopener">Privacy policy</a>' +
     '</div>';
   el.classList.remove("hidden");
   document.body.classList.add("no-scroll");
@@ -1943,6 +1944,7 @@ function renderAccountSheet() {
         '</form>' +
         '<div class="auth-msg" id="acct-msg" role="alert"></div>' +
       '</section>' +
+      '<a class="acct-privacy" href="privacy.html" target="_blank" rel="noopener">Privacy policy</a>' +
     '</div>';
 }
 
