@@ -335,13 +335,6 @@ function toast(msg) {
   setTimeout(() => el.remove(), 2800);
 }
 
-function getGreeting() {
-  const hour = new Date().getHours();
-  if (hour < 12) return "Good morning";
-  if (hour < 17) return "Good afternoon";
-  return "Good evening";
-}
-
 function safeId(str) {
   return str.replace(/[^a-zA-Z0-9]/g, "_");
 }
@@ -361,69 +354,6 @@ function maxWeightEver(exName) {
     }
   }
   return best;
-}
-
-// ── Dashboard Helpers ─────────────────────────────────────────
-function calculateStreak() {
-  if (allWorkouts.length === 0) return 0;
-  const workoutDates = new Set(allWorkouts.map(w => w.date));
-  let streak = 0;
-  const checkDate = new Date(todayStr());
-  // If no workout today, start counting from yesterday
-  if (!workoutDates.has(todayStr())) checkDate.setDate(checkDate.getDate() - 1);
-  while (true) {
-    const dateStr = checkDate.toISOString().split("T")[0];
-    if (workoutDates.has(dateStr)) {
-      streak++;
-      checkDate.setDate(checkDate.getDate() - 1);
-    } else {
-      break;
-    }
-  }
-  return streak;
-}
-
-function countRecentPRs() {
-  const cutoff = new Date();
-  cutoff.setDate(cutoff.getDate() - 7);
-  const cutoffStr = cutoff.toISOString().split("T")[0];
-
-  const prevMax = {};
-  for (const w of allWorkouts.filter(w => w.date < cutoffStr)) {
-    for (const ex of (w.exercises || [])) {
-      const m = Math.max(...(ex.sets || []).map(s => parseFloat(s.weight) || 0));
-      if (!prevMax[ex.name] || m > prevMax[ex.name]) prevMax[ex.name] = m;
-    }
-  }
-  const prSet = new Set();
-  for (const w of allWorkouts.filter(w => w.date >= cutoffStr)) {
-    for (const ex of (w.exercises || [])) {
-      const m = Math.max(...(ex.sets || []).map(s => parseFloat(s.weight) || 0));
-      if (m > (prevMax[ex.name] || 0)) prSet.add(ex.name);
-    }
-  }
-  return prSet.size;
-}
-
-function getWeekDays() {
-  const now = new Date();
-  const dow = now.getDay(); // 0=Sun
-  const monday = new Date(now);
-  monday.setDate(now.getDate() - (dow === 0 ? 6 : dow - 1));
-  const workoutDates = new Set(allWorkouts.map(w => w.date));
-  const labels = ["M","T","W","T","F","S","S"];
-  return Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(monday);
-    d.setDate(monday.getDate() + i);
-    const dateStr = d.toISOString().split("T")[0];
-    return {
-      label: labels[i],
-      dateStr,
-      isToday: dateStr === todayStr(),
-      isFuture: dateStr > todayStr(),
-      hasWorkout: workoutDates.has(dateStr)
-    };
-  });
 }
 
 // ── Firestore ────────────────────────────────────────────────
@@ -528,54 +458,6 @@ async function loadWhoopData() {
   } catch(e) { console.error('Whoop fetch error:', e); return null; }
 }
 
-function whoopSectionHTML() {
-  const connected = !!localStorage.getItem('whoop_access_token');
-  if (!connected) {
-    return '<div class="whoop-card not-connected">' +
-      '<span class="whoop-logo">WHOOP</span>' +
-      '<button class="btn-secondary" onclick="window._connectWhoop()">Connect WHOOP</button>' +
-    '</div>';
-  }
-  const rec    = whoopData?.recovery?.records?.[0];
-  const cycle  = whoopData?.cycle?.records?.[0];
-  const score  = rec?.score?.recovery_score ?? null;
-  const hrv    = rec?.score?.hrv_rmssd_milli   ? Math.round(rec.score.hrv_rmssd_milli)   : null;
-  const rhr    = rec?.score?.resting_heart_rate ? Math.round(rec.score.resting_heart_rate) : null;
-  const strain = cycle?.score?.strain           ? cycle.score.strain.toFixed(1)            : null;
-  let scoreColor, scoreLabel;
-  if (score === null)   { scoreColor = '#8B8F96'; scoreLabel = '—'; }
-  else if (score >= 67) { scoreColor = '#5BC98A'; scoreLabel = 'Peak'; }
-  else if (score >= 34) { scoreColor = '#f0a500'; scoreLabel = 'Good'; }
-  else                  { scoreColor = '#e05050'; scoreLabel = 'Low'; }
-  const pct = score ?? 0;
-  return '<div class="whoop-card">' +
-    '<div class="whoop-card-header">' +
-      '<span class="whoop-logo">WHOOP</span>' +
-      '<button class="whoop-disconnect" onclick="window._disconnectWhoop()">Disconnect</button>' +
-    '</div>' +
-    '<div class="whoop-metrics">' +
-      '<div class="whoop-score-block">' +
-        '<div class="whoop-ring-wrap">' +
-          '<svg class="whoop-ring-svg" viewBox="0 0 36 36">' +
-            '<circle class="ring-bg" cx="18" cy="18" r="15.9" fill="none" stroke-width="2.8"/>' +
-            '<circle class="ring-fill" cx="18" cy="18" r="15.9" fill="none" stroke-width="2.8"' +
-              ' stroke="' + scoreColor + '" pathLength="100"' +
-              ' stroke-dasharray="' + pct + ' 100" stroke-linecap="round"/>' +
-          '</svg>' +
-          '<div class="whoop-score-num" style="color:' + scoreColor + '">' + (score !== null ? score + '%' : '—') + '</div>' +
-        '</div>' +
-        '<div class="whoop-score-label" style="color:' + scoreColor + '">' + scoreLabel + '</div>' +
-        '<div class="whoop-metric-name">Recovery</div>' +
-      '</div>' +
-      '<div class="whoop-stats-grid">' +
-        '<div class="whoop-stat"><div class="whoop-stat-val">' + (hrv    ?? '—') + '</div><div class="whoop-stat-lbl">HRV (ms)</div></div>' +
-        '<div class="whoop-stat"><div class="whoop-stat-val">' + (rhr    ?? '—') + '</div><div class="whoop-stat-lbl">RHR (bpm)</div></div>' +
-        '<div class="whoop-stat"><div class="whoop-stat-val">' + (strain ?? '—') + '</div><div class="whoop-stat-lbl">Strain</div></div>' +
-      '</div>' +
-    '</div>' +
-  '</div>';
-}
-
 // ── Navigation ───────────────────────────────────────────────
 function showView(name) {
   if (sheetOpen) window._closeSheet();
@@ -589,200 +471,195 @@ function showView(name) {
   else if (name === "weight")   renderWeightView();
 }
 
-// ── Dashboard ────────────────────────────────────────────────
-function renderDashboard() {
-  const el = document.getElementById("view-dashboard");
+// ── Today (dashboard) ────────────────────────────────────────
+// Assisted Pull-Ups: less assistance weight means more strength, so lower is better
+const LOWER_IS_BETTER = new Set(["Assisted Pull-Ups"]);
 
-  const latestBW  = allBodyweights[0];
-  const startBW   = allBodyweights[allBodyweights.length - 1];
-  const curWeight = latestBW?.weight;
-  const startWeight = startBW?.weight;
-
-  const streak  = calculateStreak();
-  const prCount = countRecentPRs();
-  const weekDays = getWeekDays();
-
-  const todayWorkout = allWorkouts.find(w => w.date === todayStr());
-
-  // Weight progress bar
-  let progressPct = 0;
-  if (startWeight && curWeight && startWeight !== GOAL_WEIGHT) {
-    progressPct = Math.min(100, Math.max(0,
-      ((curWeight - startWeight) / (GOAL_WEIGHT - startWeight)) * 100
-    ));
-  }
-  const lbsToGo = curWeight ? Math.max(0, GOAL_WEIGHT - curWeight).toFixed(1) : "—";
-  const yearStart  = new Date('2026-01-01T12:00:00');
-  const yearEnd    = new Date('2026-12-31T12:00:00');
-  const yearNow    = new Date(todayStr() + 'T12:00:00');
-  const yearPct    = Math.min(100, Math.max(0, (yearNow - yearStart) / (yearEnd - yearStart) * 100));
-
-  // Week strip
-  const weekHTML = weekDays.map(d => {
-    let dotClass = "week-day-dot";
-    let content  = "—";
-    if (d.isToday) { dotClass += " today"; content = "NOW"; }
-    else if (d.hasWorkout) { dotClass += " done"; content = "✓"; }
-    return '<div class="week-day">' +
-      '<span class="week-day-label' + (d.isToday ? " today" : "") + '">' + d.label + '</span>' +
-      '<div class="' + dotClass + '">' + content + '</div>' +
-    '</div>';
-  }).join("");
-
-  // Today's workout card body
-  let todayBody;
-  if (todayWorkout) {
-    const exRows = (todayWorkout.exercises || []).map(ex => {
-      const mw = maxW(ex);
-      const detail = ex.weighted === false
-        ? ex.sets.length + " sets"
-        : ex.sets.length + " sets · " + (mw > 0 ? mw + " lbs" : "—");
-      return '<div class="today-ex-row">' +
-        '<div class="today-ex-dot"></div>' +
-        '<span class="today-ex-name">' + esc(ex.name) + '</span>' +
-        '<span class="today-ex-sets">' + detail + '</span>' +
-      '</div>';
-    }).join("");
-    const cardioRow = todayWorkout.cardio
-      ? '<div class="today-ex-row"><div class="today-ex-dot"></div>' +
-          '<span class="today-ex-name">🚴 Bike</span>' +
-          '<span class="today-ex-sets">' + parseInt(todayWorkout.cardio) + ' min</span></div>'
-      : "";
-    todayBody = '<div class="today-exercises">' + exRows + cardioRow + '</div>';
-  } else {
-    todayBody =
-      '<div class="today-empty">' +
-        '<p class="today-empty-text">No workout logged yet today</p>' +
-        '<button class="btn-primary" onclick="window._openSheet()" style="width:100%">' +
-          'Create Today\'s Workout' +
-        '</button>' +
-      '</div>';
-  }
-
-  const recentCards = allWorkouts.slice(0, 3).map(workoutCardHTML).join("");
-
-  el.innerHTML =
-    '<span class="dash-greeting">' + getGreeting() + '</span>' +
-
-    '<div class="inspire-block">' +
-      '<p class="inspire-text">“' + esc(DAILY_QUOTE.text) + '”</p>' +
-      '<cite class="inspire-author">— ' + esc(DAILY_QUOTE.author) + '</cite>' +
-    '</div>' +
-
-    (curWeight
-      ? '<div class="bw-section">' +
-          '<span class="bw-label">Body Weight</span>' +
-          '<div class="bw-row">' +
-            '<div style="display:flex;align-items:baseline;gap:4px">' +
-              '<span class="bw-num">' + curWeight + '</span>' +
-              '<span class="bw-unit">lbs</span>' +
-            '</div>' +
-            '<div class="bw-goal">' +
-              '<span class="bw-goal-label">Goal</span>' +
-              '<span class="bw-goal-val">' + GOAL_WEIGHT + ' lbs</span>' +
-            '</div>' +
-          '</div>' +
-          '<div class="goal-bar-track"><div class="goal-bar-fill" style="width:' + progressPct.toFixed(1) + '%"></div></div>' +
-          '<div class="goal-bar-labels">' +
-            '<span>' + (startWeight ?? "—") + ' lbs start</span>' +
-            '<span>' + lbsToGo + ' lbs to go</span>' +
-          '</div>' +
-          '<div style="margin-top:12px;display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">' +
-            '<span style="font-size:10px;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-muted)">Year elapsed</span>' +
-            '<span style="font-size:10px;color:var(--text-muted)">' + yearPct.toFixed(0) + '%</span>' +
-          '</div>' +
-          '<div class="goal-bar-track"><div class="goal-bar-fill" style="width:' + yearPct.toFixed(1) + '%;background:var(--border-light)"></div></div>' +
-          '<div class="goal-bar-labels">' +
-            '<span>Jan 1</span>' +
-            '<span>Dec 31, 2026</span>' +
-          '</div>' +
-        '</div>'
-      : '<div class="bw-section">' +
-          '<span class="bw-label">Body Weight</span>' +
-          '<p style="font-size:14px;color:var(--text-muted);margin-bottom:4px">No weight logged yet</p>' +
-        '</div>') +
-
-    '<div class="dash-divider"></div>' +
-
-    '<div class="stats-row">' +
-      '<div class="stat-pill">' +
-        '<div class="stat-pill-icon fire">' +
-          '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="color:var(--accent)">' +
-            '<path d="M8.5 14.5A2.5 2.5 0 0011 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 11-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 002.5 3z"/>' +
-          '</svg>' +
-        '</div>' +
-        '<div>' +
-          '<div class="stat-pill-num">' + streak + '</div>' +
-          '<div class="stat-pill-label">Day Streak</div>' +
-        '</div>' +
-      '</div>' +
-      '<div class="stat-pill">' +
-        '<div class="stat-pill-icon trophy">' +
-          '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="color:var(--success)">' +
-            '<path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/>' +
-            '<path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/>' +
-            '<path d="M4 22h16"/>' +
-            '<path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 19.75 7 21.83 7 22"/>' +
-            '<path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 19.75 17 21.83 17 22"/>' +
-            '<path d="M18 2H6v7a6 6 0 0 0 12 0V2z"/>' +
-          '</svg>' +
-        '</div>' +
-        '<div>' +
-          '<div class="stat-pill-num">' + prCount + '</div>' +
-          '<div class="stat-pill-label">PRs This Week</div>' +
-        '</div>' +
-      '</div>' +
-    '</div>' +
-
-    '<div class="week-card">' +
-      '<div class="week-card-title">This Week</div>' +
-      '<div class="week-strip">' + weekHTML + '</div>' +
-    '</div>' +
-
-    '<div class="today-card">' +
-      '<div class="today-card-header">' +
-        '<div>' +
-          '<div class="today-card-sub">Today · ' + new Date().toLocaleDateString("en-US", { weekday: "long" }) + '</div>' +
-          '<div class="today-card-title">' + (todayWorkout ? "Workout Logged" : "Today’s Workout") + '</div>' +
-        '</div>' +
-        (todayWorkout ? '<button class="btn-secondary" onclick="window._openSheet()">+ Add</button>' : '') +
-      '</div>' +
-      todayBody +
-    '</div>' +
-
-    whoopSectionHTML() +
-
-    (allWorkouts.length > 0
-      ? '<div class="section-title" style="margin-top:4px">Recent Workouts</div>' +
-          '<div class="workout-list">' + recentCards + '</div>'
-      : '');
-
+function exTop(ex) {
+  const ws = (ex.sets || []).map(s => parseFloat(s.weight) || 0).filter(w => w > 0);
+  if (!ws.length) return 0;
+  return LOWER_IS_BETTER.has(ex.name) ? Math.min(...ws) : Math.max(...ws);
 }
 
-function workoutCardHTML(w) {
-  const groups = [...new Set((w.exercises || []).map(e => e.muscleGroup).filter(Boolean))];
-  const tagText = groups.length ? groups.map(esc).join(" &middot; ") : "Mixed";
-  const rows = (w.exercises || []).map(e => {
-    const mw = maxW(e);
-    const detail = e.weighted === false
-      ? e.sets.length + " sets &middot; BW"
-      : e.sets.length + " sets &middot; " + (mw > 0 ? mw + " lbs" : "—");
-    return '<div class="workout-card-exercise">' +
-      '<span class="ex-name">' + esc(e.name) + '</span>' +
-      '<span class="ex-sets">' + detail + '</span>' +
+function isBetter(name, a, b) {
+  return LOWER_IS_BETTER.has(name) ? a < b : a > b;
+}
+
+function workoutVolume(w) {
+  return (w.exercises || []).reduce((t, e) =>
+    t + (e.sets || []).reduce((u, s) => u + (parseFloat(s.weight) || 0) * (parseInt(s.reps) || 0), 0), 0);
+}
+
+// Exercises in this workout that beat every earlier session of the same exercise
+function workoutPRs(w) {
+  const prs = [];
+  for (const ex of (w.exercises || [])) {
+    const top = exTop(ex);
+    if (!top) continue;
+    const earlier = allWorkouts
+      .filter(o => o.date < w.date)
+      .flatMap(o => (o.exercises || []).filter(e => e.name === ex.name))
+      .map(exTop).filter(Boolean);
+    if (!earlier.length) continue;
+    const best = LOWER_IS_BETTER.has(ex.name) ? Math.min(...earlier) : Math.max(...earlier);
+    if (isBetter(ex.name, top, best)) prs.push(ex.name);
+  }
+  return prs;
+}
+
+function workoutName(w) {
+  const groups = [...new Set((w.exercises || []).map(e => e.muscleGroup).filter(Boolean))].sort();
+  if (groups.length) return groups.join(" · ");
+  return w.cardio ? "Cardio" : "Workout";
+}
+
+function dateFromStr(d) { return new Date(d + "T12:00:00"); }
+
+function daysBetween(a, b) {
+  return Math.round((dateFromStr(b) - dateFromStr(a)) / 86400000);
+}
+
+function isoDate(d) {
+  return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+}
+
+// Sunday–Saturday of the current week, with minutes trained each day
+function durationWeek() {
+  const today = dateFromStr(todayStr());
+  const sunday = new Date(today);
+  sunday.setDate(today.getDate() - today.getDay());
+  return ["S", "M", "T", "W", "T", "F", "S"].map((label, i) => {
+    const d = new Date(sunday);
+    d.setDate(sunday.getDate() + i);
+    const ds = isoDate(d);
+    const min = allWorkouts.filter(w => w.date === ds).reduce((t, w) => t + (parseInt(w.durationMin) || 0), 0);
+    return { label, min, isToday: ds === todayStr(), isFuture: ds > todayStr() };
+  });
+}
+
+function sparkline(vals, w, h) {
+  if (vals.length < 2) return "";
+  const lo = Math.min(...vals), hi = Math.max(...vals), r = (hi - lo) || 1;
+  const pts = vals.map((v, i) =>
+    (i * w / (vals.length - 1)).toFixed(1) + "," + (h - 2 - (v - lo) / r * (h - 4)).toFixed(1)).join(" ");
+  return '<svg class="lift-spark" viewBox="0 0 ' + w + ' ' + h + '" preserveAspectRatio="none" aria-hidden="true">' +
+    '<polyline points="' + pts + '"/></svg>';
+}
+
+function recoveryTileHTML() {
+  const connected = !!localStorage.getItem("whoop_access_token");
+  if (!connected) {
+    return '<div class="tstat"><div class="tstat-label">Recovery</div>' +
+      '<div class="tstat-value">—</div>' +
+      '<button class="tstat-link" onclick="window._connectWhoop()">Connect Whoop</button></div>';
+  }
+  const score = whoopData?.recovery?.records?.[0]?.score?.recovery_score ?? null;
+  let color = "var(--text-primary)";
+  if (score !== null) color = score >= 67 ? "var(--success)" : score >= 34 ? "#F0B429" : "var(--danger)";
+  return '<div class="tstat"><div class="tstat-label">Recovery</div>' +
+    '<div class="tstat-value" style="color:' + color + '">' + (score !== null ? Math.round(score) + '<span class="tstat-pct">%</span>' : "—") + '</div>' +
+    '<div class="tstat-unit">Whoop</div></div>';
+}
+
+function renderDashboard() {
+  const el = document.getElementById("view-dashboard");
+  const today = todayStr();
+
+  // Last workout
+  const last = allWorkouts.find(w => w.date <= today);
+  const daysSince = last ? daysBetween(last.date, today) : null;
+  const lastValue = daysSince === null ? "—" : daysSince === 0 ? "Today" : daysSince;
+  const lastUnit = daysSince === null ? "no workouts yet" : daysSince === 0 ? "keep it going" : daysSince === 1 ? "day ago" : "days ago";
+
+  // Weekly duration
+  const week = durationWeek();
+  const weekMin = week.reduce((t, d) => t + d.min, 0);
+  const maxMin = Math.max(60, ...week.map(d => d.min));
+  const barsHTML = week.map(d => {
+    const h = d.min > 0 ? Math.max(6, Math.round(d.min / maxMin * 56)) : 3;
+    const cls = d.min > 0 ? "on" : d.isFuture ? "future" : "";
+    return '<div class="dur-day">' +
+      '<div class="dur-min">' + (d.min > 0 ? d.min : "") + '</div>' +
+      '<div class="dur-bar ' + cls + '" style="height:' + h + 'px"></div>' +
+      '<div class="dur-label' + (d.isToday ? " today" : "") + '">' + d.label + '</div>' +
     '</div>';
   }).join("");
-  const cardioRow = w.cardio
-    ? '<div class="workout-card-exercise"><span class="ex-name">🚴 Bike</span>' +
-        '<span class="ex-sets">' + parseInt(w.cardio) + ' min</span></div>'
-    : "";
-  return '<div class="workout-card">' +
-    '<div class="workout-card-header">' +
-      '<span class="workout-card-date">' + esc(formatDate(w.date)) + '</span>' +
-      '<span class="workout-card-tag">' + tagText + '</span>' +
-    '</div>' +
-    '<div class="workout-card-exercises">' + rows + cardioRow + '</div>' +
-  '</div>';
+
+  // Recent workouts
+  const recentHTML = allWorkouts.slice(0, 3).map(w => {
+    const d = dateFromStr(w.date);
+    const exCount = (w.exercises || []).length;
+    const setCount = (w.exercises || []).reduce((t, e) => t + (e.sets || []).length, 0);
+    const meta = [d.toLocaleDateString("en-US", { weekday: "short" })];
+    if (exCount) meta.push(exCount + (exCount === 1 ? " exercise" : " exercises"), setCount + " sets");
+    if (w.durationMin) meta.push(w.durationMin + " min");
+    else if (w.cardio) meta.push("bike " + parseInt(w.cardio) + "m");
+    const prs = workoutPRs(w);
+    const tag = prs.length === 1 ? "PR · " + esc(prs[0]) : prs.length > 1 ? prs.length + " PRs" : "lbs";
+    return '<div class="recent-row">' +
+      '<div class="recent-date">' +
+        '<div class="recent-mon">' + d.toLocaleDateString("en-US", { month: "short" }).toUpperCase() + '</div>' +
+        '<div class="recent-day">' + d.getDate() + '</div>' +
+      '</div>' +
+      '<div class="recent-main">' +
+        '<div class="recent-name">' + esc(workoutName(w)) + '</div>' +
+        '<div class="recent-meta">' + meta.join(" · ") + '</div>' +
+      '</div>' +
+      '<div class="recent-side">' +
+        '<div class="recent-vol">' + Math.round(workoutVolume(w)).toLocaleString("en-US") + '</div>' +
+        '<div class="recent-tag' + (prs.length ? " pr" : "") + '">' + tag + '</div>' +
+      '</div>' +
+    '</div>';
+  }).join("");
+
+  // Most-logged lifts
+  const counts = {};
+  allWorkouts.forEach(w => (w.exercises || []).forEach(e => { if (exTop(e)) counts[e.name] = (counts[e.name] || 0) + 1; }));
+  const topLifts = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([name]) => {
+    const history = [...allWorkouts].reverse()
+      .flatMap(w => (w.exercises || []).filter(e => e.name === name))
+      .map(exTop).filter(Boolean);
+    const recent = history.slice(-8);
+    const best = LOWER_IS_BETTER.has(name) ? Math.min(...history) : Math.max(...history);
+    return '<div class="lift-tile">' +
+      '<div class="lift-name">' + esc(name) + '</div>' +
+      '<div class="lift-top">' + recent[recent.length - 1] + '</div>' +
+      sparkline(recent, 90, 24) +
+      '<div class="lift-best">best ' + best + '</div>' +
+    '</div>';
+  }).join("");
+
+  const inProgress = !!timerStartedAt();
+
+  el.innerHTML =
+    '<section class="today-stats">' +
+      recoveryTileHTML() +
+      '<div class="tstat"><div class="tstat-label">Last workout</div>' +
+        '<div class="tstat-value">' + lastValue + '</div><div class="tstat-unit">' + lastUnit + '</div></div>' +
+      '<div class="tstat"><div class="tstat-label">Weekly duration</div>' +
+        '<div class="tstat-value accent">' + weekMin + '</div><div class="tstat-unit">minutes</div></div>' +
+    '</section>' +
+
+    '<section class="dur-chart" aria-label="Minutes trained each day this week">' + barsHTML + '</section>' +
+
+    (recentHTML
+      ? '<section class="today-section">' +
+          '<div class="today-section-head"><span>Recent</span></div>' +
+          recentHTML +
+        '</section>'
+      : '<div class="empty-state"><div class="empty-title">No workouts yet</div>' +
+          '<div class="empty-sub">Tap Start workout to log your first one</div></div>') +
+
+    (topLifts
+      ? '<section class="today-section">' +
+          '<div class="today-section-head"><span>Most-logged lifts · last 8 sessions</span></div>' +
+          '<div class="lift-tiles">' + topLifts + '</div>' +
+        '</section>'
+      : '') +
+
+    '<button class="start-btn" onclick="' + (inProgress ? "window._nav('log')" : "window._openSheet()") + '">' +
+      (inProgress ? "Resume workout" : "Start workout") +
+    '</button>';
 }
 
 // ── Bottom Sheet ─────────────────────────────────────────────
