@@ -1,6 +1,11 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.12.1/firebase-app.js";
-import { getFirestore, collection, addDoc, getDocs, query, orderBy, serverTimestamp, doc, updateDoc }
+import { getFirestore, collection, addDoc, getDocs, getDoc, setDoc, deleteDoc, query, orderBy, limit,
+  serverTimestamp, doc, updateDoc, writeBatch }
   from "https://www.gstatic.com/firebasejs/12.12.1/firebase-firestore.js";
+import { getAuth, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword,
+  sendEmailVerification, sendPasswordResetEmail, signOut, reauthenticateWithCredential,
+  EmailAuthProvider, deleteUser }
+  from "https://www.gstatic.com/firebasejs/12.12.1/firebase-auth.js";
 
 // ── Firebase ─────────────────────────────────────────────────
 const firebaseConfig = {
@@ -13,6 +18,8 @@ const firebaseConfig = {
 };
 const firebaseApp = initializeApp(firebaseConfig);
 const db = getFirestore(firebaseApp);
+const auth = getAuth(firebaseApp);
+let currentUser = null;
 
 // ── Whoop Config ──────────────────────────────────────────────
 const WHOOP_CLIENT_ID  = 'd5efd9e1-e119-4838-820b-d599b4b0e9ba';
@@ -22,8 +29,6 @@ const WHOOP_AUTH_URL   = 'https://api.prod.whoop.com/oauth/oauth2/auth';
 const WHOOP_SCOPES     = 'read:recovery read:cycles read:sleep read:profile offline';
 
 // ── App Constants ─────────────────────────────────────────────
-const GOAL_WEIGHT = 215;
-
 // Classic philosophers only. The welcome screen and the workout summary each pick one per day.
 const QUOTES = [
   { text: "You have power over your mind — not outside events. Realize this, and you will find strength.", author: "Marcus Aurelius" },
@@ -377,13 +382,13 @@ function maxW(ex) {
 
 // ── Firestore ────────────────────────────────────────────────
 async function loadWorkouts() {
-  const q = query(collection(db, "workouts"), orderBy("date", "desc"));
+  const q = query(userCol("workouts"), orderBy("date", "desc"));
   const snap = await getDocs(q);
   allWorkouts = snap.docs.map(d => ({ id: d.id, ...d.data() }));
 }
 
 async function saveWorkoutDoc(data) {
-  const ref = await addDoc(collection(db, "workouts"), {
+  const ref = await addDoc(userCol("workouts"), {
     ...data,
     savedAt: serverTimestamp()
   });
@@ -394,13 +399,13 @@ async function saveWorkoutDoc(data) {
 }
 
 async function loadBodyweights() {
-  const q = query(collection(db, "bodyweight"), orderBy("date", "desc"));
+  const q = query(userCol("bodyweight"), orderBy("date", "desc"));
   const snap = await getDocs(q);
   allBodyweights = snap.docs.map(d => ({ id: d.id, ...d.data() }));
 }
 
 async function saveBodyweightDoc(date, weight) {
-  const ref = await addDoc(collection(db, "bodyweight"), {
+  const ref = await addDoc(userCol("bodyweight"), {
     date,
     weight: parseFloat(weight),
     savedAt: serverTimestamp()
@@ -1306,7 +1311,7 @@ window._saveSummaryNote = async function(btn) {
   const text = document.getElementById("sum-note-text").value;
   btn.disabled = true;
   try {
-    await updateDoc(doc(db, "workouts", summaryWorkout.id), { notes: text });
+    await updateDoc(doc(db, "users", currentUser.uid, "workouts", summaryWorkout.id), { notes: text });
     summaryWorkout.notes = text;
     toast("Note saved");
     document.getElementById("sum-note").classList.add("hidden");
@@ -1618,18 +1623,403 @@ window._saveBW = async function() {
   }
 };
 
+// ── Accounts ─────────────────────────────────────────────────
+// Email + password sign-in. Each person's data lives under users/{uid}/…; access needs a
+// verified email that is on the invite list (invites/{email}). The security rules enforce
+// the same thing on the server — this code only decides which screen to show.
+let isAdmin = false;
+let appStarted = false;
+let authMode = "signin";
+
+function userCol(name) {
+  return collection(db, "users", currentUser.uid, name);
+}
+
+const AUTH_ERRORS = {
+  "auth/invalid-credential": "Wrong email or password.",
+  "auth/wrong-password": "Wrong email or password.",
+  "auth/user-not-found": "Wrong email or password.",
+  "auth/invalid-email": "That doesn't look like an email address.",
+  "auth/email-already-in-use": "There's already an account with this email — try signing in.",
+  "auth/weak-password": "Use at least 6 characters for your password.",
+  "auth/missing-password": "Enter your password.",
+  "auth/too-many-requests": "Too many tries. Wait a minute and try again.",
+  "auth/network-request-failed": "No connection. Check your internet and try again.",
+  "auth/operation-not-allowed": "Email sign-in isn't switched on yet in Firebase.",
+  "auth/configuration-not-found": "Email sign-in isn't switched on yet in Firebase.",
+  "auth/requires-recent-login": "For safety, enter your password again."
+};
+function authErrorText(e) {
+  return AUTH_ERRORS[e?.code] || "Something went wrong. Please try again.";
+}
+
+function showAuth(mode, message) {
+  authMode = mode;
+  const el = document.getElementById("auth-screen");
+  const email = currentUser?.email || "";
+  let body;
+
+  if (mode === "signin" || mode === "signup") {
+    const signup = mode === "signup";
+    body =
+      '<div class="auth-tabs" role="tablist">' +
+        '<button role="tab" aria-selected="' + !signup + '" class="' + (signup ? "" : "on") + '" onclick="window._authMode(\'signin\')">Sign in</button>' +
+        '<button role="tab" aria-selected="' + signup + '" class="' + (signup ? "on" : "") + '" onclick="window._authMode(\'signup\')">Create account</button>' +
+      '</div>' +
+      '<form class="auth-form" onsubmit="event.preventDefault();window._authSubmit()">' +
+        '<label class="auth-label" for="auth-email">Email</label>' +
+        '<input class="input-field" id="auth-email" type="email" autocomplete="email" required>' +
+        '<label class="auth-label" for="auth-password">Password</label>' +
+        '<input class="input-field" id="auth-password" type="password" required minlength="6" autocomplete="' + (signup ? "new-password" : "current-password") + '">' +
+        (signup ? '<div class="auth-hint">At least 6 characters. Vitruvius is invite-only — use the email you were invited with.</div>' : '') +
+        '<div class="auth-msg" id="auth-msg" role="alert">' + (message ? esc(message) : "") + '</div>' +
+        '<button class="btn-primary auth-submit" id="auth-submit" type="submit">' + (signup ? "Create account" : "Sign in") + '</button>' +
+      '</form>' +
+      (signup ? '' : '<button class="link-btn auth-forgot" onclick="window._authMode(\'reset\')">Forgot password?</button>');
+  } else if (mode === "reset") {
+    body =
+      '<div class="auth-title">Reset password</div>' +
+      '<div class="auth-text">We\'ll email you a link to choose a new password.</div>' +
+      '<form class="auth-form" onsubmit="event.preventDefault();window._authReset()">' +
+        '<label class="auth-label" for="auth-email">Email</label>' +
+        '<input class="input-field" id="auth-email" type="email" autocomplete="email" required>' +
+        '<div class="auth-msg" id="auth-msg" role="alert">' + (message ? esc(message) : "") + '</div>' +
+        '<button class="btn-primary auth-submit" id="auth-submit" type="submit">Send reset link</button>' +
+      '</form>' +
+      '<button class="link-btn auth-forgot" onclick="window._authMode(\'signin\')">Back to sign in</button>';
+  } else if (mode === "verify") {
+    body =
+      '<div class="auth-title">Check your email</div>' +
+      '<div class="auth-text">We sent a link to <b>' + esc(email) + '</b>. Tap it to confirm your email, then come back here and tap Continue. (Check spam if you don\'t see it.)</div>' +
+      '<div class="auth-msg" id="auth-msg" role="alert">' + (message ? esc(message) : "") + '</div>' +
+      '<button class="btn-primary auth-submit" id="auth-submit" onclick="window._authVerified()">Continue</button>' +
+      '<button class="link-btn auth-forgot" onclick="window._authResendVerify()">Resend email</button>' +
+      '<button class="link-btn muted auth-forgot" onclick="window._signOut()">Use a different email</button>';
+  } else if (mode === "notinvited") {
+    body =
+      '<div class="auth-title">Not invited yet</div>' +
+      '<div class="auth-text"><b>' + esc(email) + '</b> isn\'t on the invite list. Ask the person who told you about Vitruvius to invite this email, then tap Try again.</div>' +
+      '<div class="auth-msg" id="auth-msg" role="alert">' + (message ? esc(message) : "") + '</div>' +
+      '<button class="btn-primary auth-submit" onclick="window._authVerified()">Try again</button>' +
+      '<button class="link-btn muted auth-forgot" onclick="window._signOut()">Sign out</button>';
+  } else if (mode === "import") {
+    body =
+      '<div class="auth-title">Bring over your history?</div>' +
+      '<div class="auth-text">We found <b>' + message.workouts + ' workouts</b> and <b>' + message.weights + ' weigh-ins</b> saved before accounts existed. Import them into your account?</div>' +
+      '<div class="auth-msg" id="auth-msg" role="alert"></div>' +
+      '<button class="btn-primary auth-submit" id="auth-submit" onclick="window._importLegacy()">Import my history</button>' +
+      '<button class="link-btn muted auth-forgot" onclick="window._skipImport()">Not now</button>';
+  }
+
+  el.innerHTML =
+    '<div class="auth-inner">' +
+      '<img class="auth-logo" src="icons/icon-192.png?v=3" alt="" width="96" height="96">' +
+      '<div class="auth-mark">Vitruvius</div>' +
+      body +
+    '</div>';
+  el.classList.remove("hidden");
+  document.body.classList.add("no-scroll");
+  const first = el.querySelector("input");
+  if (first && !("ontouchstart" in window)) first.focus();
+}
+
+function hideAuth() {
+  const el = document.getElementById("auth-screen");
+  el.classList.add("hidden");
+  el.innerHTML = "";
+  document.body.classList.remove("no-scroll");
+}
+
+function setAuthBusy(busy, label) {
+  const btn = document.getElementById("auth-submit");
+  if (!btn) return;
+  if (busy) { btn.dataset.label = btn.textContent; btn.textContent = label || "One moment…"; }
+  else if (btn.dataset.label) btn.textContent = btn.dataset.label;
+  btn.disabled = busy;
+}
+
+function setAuthMsg(text, ok) {
+  const m = document.getElementById("auth-msg");
+  if (m) { m.textContent = text; m.classList.toggle("ok", !!ok); }
+}
+
+window._authMode = function(mode) { showAuth(mode); };
+
+window._authSubmit = async function() {
+  const email = document.getElementById("auth-email").value.trim();
+  const password = document.getElementById("auth-password").value;
+  setAuthBusy(true);
+  try {
+    if (authMode === "signup") {
+      const cred = await createUserWithEmailAndPassword(auth, email, password);
+      await sendEmailVerification(cred.user, { url: location.origin + location.pathname });
+    } else {
+      await signInWithEmailAndPassword(auth, email, password);
+    }
+    // onAuthStateChanged takes it from here
+  } catch (e) {
+    console.error(e);
+    setAuthBusy(false);
+    setAuthMsg(authErrorText(e));
+  }
+};
+
+window._authReset = async function() {
+  const email = document.getElementById("auth-email").value.trim();
+  setAuthBusy(true);
+  try {
+    await sendPasswordResetEmail(auth, email, { url: location.origin + location.pathname });
+  } catch (e) {
+    // Don't reveal whether an account exists; only surface real input or connection problems
+    if (e?.code === "auth/invalid-email" || e?.code === "auth/network-request-failed") {
+      setAuthBusy(false); setAuthMsg(authErrorText(e)); return;
+    }
+  }
+  setAuthBusy(false);
+  setAuthMsg("If there's an account for that email, a reset link is on its way.", true);
+};
+
+window._authResendVerify = async function() {
+  try {
+    await sendEmailVerification(currentUser, { url: location.origin + location.pathname });
+    setAuthMsg("Sent — check your inbox.", true);
+  } catch (e) { setAuthMsg(authErrorText(e)); }
+};
+
+// "Continue" / "Try again": refresh the account from the server and re-run the access check
+window._authVerified = async function() {
+  setAuthBusy(true, "Checking…");
+  try {
+    await currentUser.reload();
+    await afterSignIn(auth.currentUser);
+  } catch (e) {
+    console.error(e);
+    setAuthBusy(false);
+    setAuthMsg(authErrorText(e));
+  }
+};
+
+window._signOut = async function() {
+  clearPersonalDeviceData();
+  await signOut(auth);
+};
+
+// Per-device leftovers from the previous person on this phone
+function clearPersonalDeviceData() {
+  [DRAFT_KEY, TIMER_KEY, "progress_ex", "whoop_access_token", "whoop_refresh_token", "whoop_token_expires", "whoop_state"]
+    .forEach(k => localStorage.removeItem(k));
+  logState = { date: todayStr(), exercises: {}, cardio: "", notes: "" };
+  allWorkouts = []; allBodyweights = []; whoopData = null; isAdmin = false; appStarted = false;
+}
+
+// Admins are the only accounts the rules let list the invites collection
+async function checkAdmin() {
+  try { await getDocs(query(collection(db, "invites"), limit(1))); return true; }
+  catch (e) { return false; }
+}
+
+async function hasAccess(user) {
+  if (isAdmin) return true;
+  try {
+    return (await getDoc(doc(db, "invites", user.email.toLowerCase()))).exists();
+  } catch (e) { return false; }
+}
+
+async function afterSignIn(user) {
+  currentUser = user;
+  if (!user.emailVerified) { showAuth("verify"); return; }
+  isAdmin = await checkAdmin();
+  if (!(await hasAccess(user))) { showAuth("notinvited"); return; }
+  await setDoc(doc(db, "users", user.uid), { email: user.email.toLowerCase(), lastSeen: serverTimestamp() }, { merge: true });
+  if (isAdmin && await offerLegacyImport()) return;
+  hideAuth();
+  await startApp();
+}
+
+// ── One-time import of the pre-accounts shared collections ──
+// Only possible while those collections are still readable, i.e. before the rules lock them.
+async function offerLegacyImport() {
+  if (localStorage.getItem("legacy_import_done") === currentUser.uid) return false;
+  try {
+    const mine = await getDocs(query(userCol("workouts"), limit(1)));
+    if (!mine.empty) return false;
+    const [w, b] = await Promise.all([getDocs(collection(db, "workouts")), getDocs(collection(db, "bodyweight"))]);
+    if (w.empty && b.empty) return false;
+    showAuth("import", { workouts: w.size, weights: b.size });
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+window._importLegacy = async function() {
+  setAuthBusy(true, "Importing…");
+  try {
+    const [w, b] = await Promise.all([getDocs(collection(db, "workouts")), getDocs(collection(db, "bodyweight"))]);
+    const docs = [
+      ...w.docs.map(d => ["workouts", d]),
+      ...b.docs.map(d => ["bodyweight", d])
+    ];
+    // Firestore batches hold up to 500 writes; keep the original ids so a retry can't duplicate
+    for (let i = 0; i < docs.length; i += 400) {
+      const batch = writeBatch(db);
+      docs.slice(i, i + 400).forEach(([col, d]) => batch.set(doc(db, "users", currentUser.uid, col, d.id), d.data()));
+      await batch.commit();
+    }
+    localStorage.setItem("legacy_import_done", currentUser.uid);
+    toast("Imported " + w.size + " workouts and " + b.size + " weigh-ins");
+    hideAuth();
+    await startApp();
+  } catch (e) {
+    console.error(e);
+    setAuthBusy(false);
+    setAuthMsg("Import didn't finish — tap to try again. Nothing was lost.");
+  }
+};
+
+window._skipImport = async function() {
+  localStorage.setItem("legacy_import_done", currentUser.uid);
+  hideAuth();
+  await startApp();
+};
+
+// ── Account sheet ────────────────────────────────────────────
+let invitesCache = [];
+
+window._openAccount = async function() {
+  sheetOpen = true;
+  document.getElementById("workout-sheet").classList.remove("hidden");
+  renderAccountSheet();
+  if (isAdmin) {
+    try {
+      const snap = await getDocs(collection(db, "invites"));
+      invitesCache = snap.docs.map(d => d.id).sort();
+    } catch (e) { invitesCache = []; }
+    if (sheetOpen) renderAccountSheet();
+  }
+};
+
+function renderAccountSheet() {
+  const el = document.getElementById("sheet-content");
+  const whoopOn = !!localStorage.getItem("whoop_access_token");
+  el.innerHTML =
+    '<div class="sheet-scroll">' +
+      '<div class="sheet-header">' +
+        '<div><div class="sheet-title">Account</div><div class="sheet-sub">' + esc(currentUser?.email || "") + '</div></div>' +
+        '<button class="modal-close" onclick="window._closeSheet()" aria-label="Close">&#x2715;</button>' +
+      '</div>' +
+
+      (isAdmin
+        ? '<section class="acct-section">' +
+            '<div class="section-title">Invite people</div>' +
+            '<form class="acct-invite" onsubmit="event.preventDefault();window._addInvite()">' +
+              '<input class="input-field" id="invite-email" type="email" placeholder="friend@example.com" aria-label="Email to invite" required>' +
+              '<button class="btn-primary" type="submit">Invite</button>' +
+            '</form>' +
+            '<div class="acct-hint">They sign up in the app with this exact email. Removing an invite cuts off their access.</div>' +
+            (invitesCache.length
+              ? invitesCache.map((e, i) =>
+                  '<div class="acct-row"><span>' + esc(e) + (e === currentUser.email.toLowerCase() ? ' <span class="acct-you">you</span>' : '') + '</span>' +
+                  (e === currentUser.email.toLowerCase() ? '' : '<button class="link-btn muted" onclick="window._removeInvite(' + i + ')">Remove</button>') + '</div>').join("")
+              : '<div class="acct-hint">No invites yet.</div>') +
+          '</section>'
+        : '') +
+
+      (whoopOn
+        ? '<section class="acct-section"><div class="section-title">Whoop</div>' +
+            '<div class="acct-row"><span>Connected on this device</span><button class="link-btn muted" onclick="window._disconnectWhoop();window._openAccount()">Disconnect</button></div></section>'
+        : '') +
+
+      '<section class="acct-section">' +
+        '<button class="btn-secondary acct-signout" onclick="window._closeSheet();window._signOut()">Sign out</button>' +
+      '</section>' +
+
+      '<section class="acct-section">' +
+        '<div class="section-title">Delete account</div>' +
+        '<div class="acct-hint">Permanently deletes your workouts, weigh-ins and login. This can\'t be undone.</div>' +
+        '<form class="acct-delete" onsubmit="event.preventDefault();window._deleteAccount()">' +
+          '<input class="input-field" id="delete-password" type="password" autocomplete="current-password" placeholder="Your password" aria-label="Password to confirm" required>' +
+          '<button class="btn-danger" id="delete-btn" type="submit">Delete my account</button>' +
+        '</form>' +
+        '<div class="auth-msg" id="acct-msg" role="alert"></div>' +
+      '</section>' +
+    '</div>';
+}
+
+window._addInvite = async function() {
+  const input = document.getElementById("invite-email");
+  const email = input.value.trim().toLowerCase();
+  if (!email) return;
+  try {
+    await setDoc(doc(db, "invites", email), { invitedAt: serverTimestamp() });
+    if (!invitesCache.includes(email)) invitesCache = [...invitesCache, email].sort();
+    toast("Invited " + email);
+    renderAccountSheet();
+  } catch (e) {
+    console.error(e);
+    toast("Couldn't add that invite");
+  }
+};
+
+window._removeInvite = async function(i) {
+  const email = invitesCache[i];
+  if (!email) return;
+  try {
+    await deleteDoc(doc(db, "invites", email));
+    invitesCache = invitesCache.filter(e => e !== email);
+    renderAccountSheet();
+  } catch (e) {
+    console.error(e);
+    toast("Couldn't remove that invite");
+  }
+};
+
+window._deleteAccount = async function() {
+  const btn = document.getElementById("delete-btn");
+  const msg = document.getElementById("acct-msg");
+  // Two taps, like Finish, so it can't happen by accident
+  if (btn.dataset.armed !== "1") {
+    btn.dataset.armed = "1";
+    btn.textContent = "Tap again to delete everything";
+    setTimeout(() => { if (btn.isConnected) { btn.dataset.armed = ""; btn.textContent = "Delete my account"; } }, 4000);
+    return;
+  }
+  btn.disabled = true;
+  btn.textContent = "Deleting…";
+  try {
+    const password = document.getElementById("delete-password").value;
+    await reauthenticateWithCredential(currentUser, EmailAuthProvider.credential(currentUser.email, password));
+    for (const col of ["workouts", "bodyweight"]) {
+      const snap = await getDocs(userCol(col));
+      for (let i = 0; i < snap.docs.length; i += 400) {
+        const batch = writeBatch(db);
+        snap.docs.slice(i, i + 400).forEach(d => batch.delete(d.ref));
+        await batch.commit();
+      }
+    }
+    await deleteDoc(doc(db, "users", currentUser.uid));
+    const user = currentUser;
+    clearPersonalDeviceData();
+    window._closeSheet();
+    await deleteUser(user);
+  } catch (e) {
+    console.error(e);
+    btn.disabled = false;
+    btn.dataset.armed = "";
+    btn.textContent = "Delete my account";
+    msg.textContent = authErrorText(e);
+  }
+};
+
 // ── Init ─────────────────────────────────────────────────────
 window._nav = showView;
 
-async function init() {
+// Runs once per signed-in session, after access is confirmed
+async function startApp() {
+  if (appStarted) return;
+  appStarted = true;
   loadDraft();
   if (localStorage.getItem(WELCOME_KEY) !== todayStr()) showWelcome();
-  document.getElementById("header-date").textContent =
-    new Date().toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
-
-  document.querySelectorAll(".nav-btn").forEach(btn =>
-    btn.addEventListener("click", () => showView(btn.dataset.view))
-  );
 
   const loadingDiv = document.createElement("div");
   loadingDiv.className = "loading";
@@ -1641,12 +2031,9 @@ async function init() {
     console.error("Firebase load error:", e);
     loadingDiv.remove();
     document.getElementById("view-dashboard").innerHTML =
-      '<div class="empty-state"><div class="empty-icon">⚠️</div>' +
+      '<div class="empty-state">' +
       '<div class="empty-title">Could not load your data</div>' +
-      '<div class="empty-sub">Firebase access may have expired. Check your Firestore security rules and try refreshing.</div></div>';
-    document.querySelectorAll(".nav-btn").forEach(btn =>
-      btn.addEventListener("click", () => showView(btn.dataset.view))
-    );
+      '<div class="empty-sub">Check your connection and try again. If it keeps happening, your invite may have been removed.</div></div>';
     return;
   }
 
@@ -1666,6 +2053,32 @@ async function init() {
 
   loadingDiv.remove();
   showView("dashboard");
+}
+
+function init() {
+  document.getElementById("header-date").textContent =
+    new Date().toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+
+  document.querySelectorAll(".nav-btn").forEach(btn =>
+    btn.addEventListener("click", () => showView(btn.dataset.view))
+  );
+
+  onAuthStateChanged(auth, async user => {
+    if (!user) {
+      currentUser = null;
+      appStarted = false;
+      document.querySelectorAll(".view").forEach(v => { v.innerHTML = ""; });
+      showAuth("signin");
+      return;
+    }
+    try {
+      await afterSignIn(user);
+    } catch (e) {
+      console.error(e);
+      currentUser = user;
+      showAuth("notinvited", "Couldn't reach the server — check your connection and tap Try again.");
+    }
+  });
 }
 
 init();

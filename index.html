@@ -14,13 +14,21 @@
   <meta name="theme-color" content="#0B0C0E">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Cormorant+Garamond:ital,wght@1,500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=12">
+  <link rel="stylesheet" href="styles.css?v=13">
 </head>
 <body>
 
   <header class="app-header">
     <span class="app-logo">Vitruvius</span>
-    <span class="header-date" id="header-date"></span>
+    <div class="header-right">
+      <span class="header-date" id="header-date"></span>
+      <button class="account-btn" onclick="window._openAccount()" aria-label="Account">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="8" r="4"/>
+          <path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/>
+        </svg>
+      </button>
+    </div>
   </header>
 
   <main class="app-main" id="app-main">
@@ -38,6 +46,9 @@
       <div class="sheet-inner" id="sheet-content"></div>
     </div>
   </div>
+
+  <!-- Sign in / sign up -->
+  <div class="auth hidden" id="auth-screen"></div>
 
   <!-- Welcome (first open of the day) -->
   <div class="welcome hidden" id="welcome-screen"></div>
@@ -78,6 +89,6 @@
   </nav>
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-  <script type="module" src="app.js?v=2"></script>
+  <script type="module" src="app.js?v=3"></script>
 </body>
 </html>
