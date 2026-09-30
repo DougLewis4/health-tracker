@@ -1886,8 +1886,10 @@ window._skipImport = async function() {
 
 // ── Account sheet ────────────────────────────────────────────
 let invitesCache = [];
+let inviteNotice = null;   // confirmation or error shown under the invite box
 
 window._openAccount = async function() {
+  inviteNotice = null;
   sheetOpen = true;
   document.getElementById("workout-sheet").classList.remove("hidden");
   renderAccountSheet();
@@ -1917,6 +1919,12 @@ function renderAccountSheet() {
               '<input class="input-field" id="invite-email" type="email" placeholder="friend@example.com" aria-label="Email to invite" required>' +
               '<button class="btn-primary" type="submit">Invite</button>' +
             '</form>' +
+            (inviteNotice
+              ? '<div class="invite-notice' + (inviteNotice.ok ? '' : ' err') + '" role="status">' +
+                  '<span>' + esc(inviteNotice.text) + '</span>' +
+                  (inviteNotice.ok ? '<button class="link-btn" onclick="window._copyAppLink(this)">Copy link</button>' : '') +
+                '</div>'
+              : '') +
             '<div class="acct-hint">They sign up in the app with this exact email. Removing an invite cuts off their access.</div>' +
             (invitesCache.length
               ? invitesCache.map((e, i) =>
@@ -1950,16 +1958,34 @@ function renderAccountSheet() {
 
 window._addInvite = async function() {
   const input = document.getElementById("invite-email");
+  const btn = document.querySelector(".acct-invite .btn-primary");
   const email = input.value.trim().toLowerCase();
   if (!email) return;
+  if (invitesCache.includes(email)) {
+    inviteNotice = { ok: true, text: email + " is already invited." };
+    renderAccountSheet();
+    return;
+  }
+  btn.disabled = true;
+  btn.textContent = "Inviting…";
   try {
     await setDoc(doc(db, "invites", email), { invitedAt: serverTimestamp() });
-    if (!invitesCache.includes(email)) invitesCache = [...invitesCache, email].sort();
-    toast("Invited " + email);
-    renderAccountSheet();
+    invitesCache = [...invitesCache, email].sort();
+    inviteNotice = { ok: true, text: "✓ Invited " + email + ". Send them the app link so they can create an account." };
   } catch (e) {
     console.error(e);
-    toast("Couldn't add that invite");
+    inviteNotice = { ok: false, text: "Couldn't add that invite. Check your connection and try again." };
+  }
+  renderAccountSheet();
+};
+
+window._copyAppLink = async function(btn) {
+  const link = location.origin + location.pathname;
+  try {
+    await navigator.clipboard.writeText(link);
+    btn.textContent = "Copied ✓";
+  } catch (e) {
+    btn.textContent = link;   // clipboard blocked: show the link so it can be copied by hand
   }
 };
 
