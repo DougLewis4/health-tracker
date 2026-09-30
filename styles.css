@@ -1143,15 +1143,47 @@ body.no-scroll { overflow: hidden; }
 }
 
 /* ── Progress ──────────────────────────────────────────────── */
-.progress-controls { margin-bottom: 20px; }
-.chart-container {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 16px;
-  margin-bottom: 20px;
-  box-shadow: var(--shadow-card);
+.prog-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
+.prog-title { min-width: 0; }
+.prog-group { font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-muted); }
+.prog-name { font-size: 22px; font-weight: 600; line-height: 1.2; }
+.ex-picker {
+  position: relative; flex-shrink: 0; height: 40px; padding: 0 14px; border-radius: 20px;
+  border: 1px solid var(--border-light); display: flex; align-items: center;
+  font-size: 13px; font-weight: 500; color: var(--text-primary); cursor: pointer;
 }
+.ex-picker select { position: absolute; inset: 0; opacity: 0; width: 100%; cursor: pointer; font-size: 16px; }
+.ex-picker:focus-within { border-color: var(--accent); }
+.range-seg {
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 3px; padding: 3px;
+  background: var(--bg-card); border-radius: 12px; margin-bottom: 18px;
+}
+.range-seg button { height: 36px; border-radius: 9px; font-size: 13px; font-weight: 500; color: var(--text-muted); }
+.range-seg button.on { background: var(--border-light); color: var(--text-primary); font-weight: 600; }
+.prog-top { margin-bottom: 14px; }
+.prog-eyebrow { font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-muted); }
+.prog-headline { display: flex; align-items: baseline; gap: 10px; }
+.prog-big { font-family: var(--ff-display); font-size: 64px; font-weight: 600; line-height: 1; }
+.prog-unit { font-size: 15px; color: var(--text-muted); }
+.prog-delta { margin-left: auto; font-size: 14px; font-weight: 600; color: var(--text-muted); }
+.prog-delta.up { color: var(--success); }
+.prog-since { font-size: 12px; color: var(--text-muted); text-align: right; }
+.prog-chart { position: relative; height: 180px; margin: 0 -4px 18px; }
+.prog-stats {
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1px;
+  background: var(--border); border-radius: 12px; overflow: hidden; margin-bottom: 22px;
+}
+.pstat { background: var(--bg-card); padding: 10px; min-width: 0; }
+.pstat-label { font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-muted); }
+.pstat-value { font-family: var(--ff-display); font-size: 22px; font-weight: 600; }
+.pstat-value.accent { color: var(--accent); }
+.hist-row {
+  display: grid; grid-template-columns: 84px minmax(0, 1fr) 70px; gap: 10px; align-items: center;
+  padding: 10px 0; border-top: 1px solid var(--border);
+}
+.hist-date { font-size: 13px; color: var(--text-muted); }
+.hist-sets { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hist-vol { text-align: right; font-family: var(--ff-display); font-size: 17px; font-weight: 600; }
 
 /* ── Body Weight View ──────────────────────────────────────── */
 .weight-log-card {

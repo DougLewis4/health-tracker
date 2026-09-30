@@ -1266,87 +1266,197 @@ window._closeSummary = function() {
 };
 
 // ── Progress ─────────────────────────────────────────────────
-function renderProgress() {
-  const el = document.getElementById("view-progress");
-  const names = [...new Set(allWorkouts.flatMap(w => (w.exercises || []).map(e => e.name)))].sort();
+const PROGRESS_RANGES = { "3M": 3, "6M": 6, "1Y": 12, "All": null };
+let progressRange = "All";
 
-  el.innerHTML =
-    '<div class="view-header">' +
-      '<div>' +
-        '<div class="view-eyebrow">Strength</div>' +
-        '<h2 class="view-title">Progress</h2>' +
-      '</div>' +
-    '</div>' +
-    (names.length === 0
-      ? '<div class="empty-state"><div class="empty-icon">📈</div>' +
-          '<div class="empty-title">No data yet</div>' +
-          '<div class="empty-sub">Log a few workouts to see your strength charts</div></div>'
-      : '<div class="progress-controls"><label class="input-label">Exercise</label>' +
-          '<select class="input-field select-field" id="prog-sel">' +
-            names.map(n => '<option value="' + esc(n) + '">' + esc(n) + '</option>').join("") +
-          '</select></div>' +
-          '<div class="chart-container"><canvas id="prog-chart"></canvas></div>' +
-          '<div id="prog-stats"></div>');
-
-  if (names.length > 0) {
-    document.getElementById("prog-sel").addEventListener("change", e => window._updateChart(e.target.value));
-    window._updateChart(names[0]);
-  }
+// One point per session of an exercise, oldest first. Bodyweight lifts (no weight logged) track reps instead.
+function exerciseSessions(name) {
+  const sessions = [...allWorkouts].reverse()
+    .flatMap(w => (w.exercises || []).filter(e => e.name === name && e.sets?.length).map(ex => ({ date: w.date, ex })));
+  const byReps = sessions.every(s => !exTop(s.ex));
+  return {
+    byReps,
+    points: sessions.map(({ date, ex }) => {
+      const top = byReps ? Math.max(...ex.sets.map(s => parseInt(s.reps) || 0)) : exTop(ex);
+      const topReps = byReps ? top : Math.max(0, ...ex.sets.filter(s => (parseFloat(s.weight) || 0) === top).map(s => parseInt(s.reps) || 0));
+      return { date, ex, top, topReps, vol: exVolume(ex) };
+    })
+  };
 }
 
-window._updateChart = function(exName) {
-  const points = [];
-  [...allWorkouts].reverse().forEach(w => {
-    const ex = (w.exercises || []).find(e => e.name === exName);
-    if (!ex?.sets?.length) return;
-    const weights = ex.sets.map(s => parseFloat(s.weight) || 0);
-    const reps    = ex.sets.map(s => parseInt(s.reps) || 0);
-    points.push({ date: w.date, maxWeight: Math.max(...weights), maxReps: Math.max(...reps) });
+function progressExerciseNames() {
+  const counts = {};
+  allWorkouts.forEach(w => (w.exercises || []).forEach(e => { counts[e.name] = (counts[e.name] || 0) + 1; }));
+  return counts;
+}
+
+function monthYear(d) {
+  return dateFromStr(d).toLocaleDateString("en-US", { month: "short", year: "numeric" });
+}
+
+function renderProgress() {
+  const el = document.getElementById("view-progress");
+  const counts = progressExerciseNames();
+  const names = Object.keys(counts);
+
+  if (!names.length) {
+    el.innerHTML = '<div class="empty-state"><div class="empty-title">No data yet</div>' +
+      '<div class="empty-sub">Log a few workouts to see your strength charts</div></div>';
+    return;
+  }
+
+  let name = localStorage.getItem("progress_ex");
+  if (!counts[name]) name = names.sort((a, b) => counts[b] - counts[a])[0];
+
+  const lib = Object.entries(EXERCISES).find(([, list]) => list.some(e => e.name === name));
+  const group = lib ? lib[0] : (allWorkouts.flatMap(w => w.exercises || []).find(e => e.name === name)?.muscleGroup || "");
+  const lower = LOWER_IS_BETTER.has(name);
+  const { byReps, points: all } = exerciseSessions(name);
+
+  const months = PROGRESS_RANGES[progressRange];
+  let points = all;
+  if (months) {
+    const cut = dateFromStr(todayStr());
+    cut.setMonth(cut.getMonth() - months);
+    points = all.filter(p => p.date >= isoDate(cut));
+  }
+
+  // Exercise picker: a real <select> laid over the pill, grouped by muscle
+  const byGroup = {};
+  names.forEach(n => {
+    const g = Object.entries(EXERCISES).find(([, list]) => list.some(e => e.name === n))?.[0] || "Other";
+    (byGroup[g] = byGroup[g] || []).push(n);
   });
+  const options = Object.keys(byGroup).sort().map(g =>
+    '<optgroup label="' + esc(g) + '">' +
+      byGroup[g].sort().map(n => '<option value="' + esc(n) + '"' + (n === name ? " selected" : "") + '>' + esc(n) + '</option>').join("") +
+    '</optgroup>').join("");
 
-  const ctx = document.getElementById("prog-chart");
-  if (!ctx) return;
+  const unit = byReps ? "reps" : "lbs";
+  const latest = all[all.length - 1];
+  const best = lower ? Math.min(...all.map(p => p.top)) : Math.max(...all.map(p => p.top));
+
+  let headline;
+  if (points.length) {
+    const first = points[0], last = points[points.length - 1];
+    const diff = last.top - first.top;
+    const improved = lower ? diff < 0 : diff > 0;
+    const deltaText = diff === 0 ? "no change" : (diff > 0 ? "▲ " : "▼ ") + Math.abs(diff) + " " + unit + (lower ? " assistance" : "");
+    headline =
+      '<div class="prog-eyebrow">Latest top set · ' + shortDate(last.date) + '</div>' +
+      '<div class="prog-headline">' +
+        '<span class="prog-big">' + last.top + '</span>' +
+        '<span class="prog-unit">' + (byReps ? "reps" : "lbs × " + last.topReps) + '</span>' +
+        '<span class="prog-delta' + (improved ? " up" : "") + '">' + deltaText + '</span>' +
+      '</div>' +
+      '<div class="prog-since">since ' + monthYear(first.date) + (lower ? " · lower is better" : "") + '</div>';
+  } else {
+    headline = '<div class="prog-eyebrow">No sessions in this range</div>' +
+      '<div class="prog-since">Last logged ' + shortDate(latest.date) + '</div>';
+  }
+
+  // Estimated one-rep max (Epley) only makes sense for normal weighted lifts
+  const e1rm = !byReps && !lower && latest.topReps > 0 && latest.topReps <= 12
+    ? Math.round(latest.top * (1 + latest.topReps / 30)) : null;
+  const bestVol = points.length ? Math.max(...points.map(p => p.vol)) : 0;
+
+  el.innerHTML =
+    '<header class="prog-head">' +
+      '<div class="prog-title">' +
+        '<div class="prog-group">' + esc(group) + '</div>' +
+        '<h2 class="prog-name">' + esc(name) + '</h2>' +
+      '</div>' +
+      '<label class="ex-picker">Change' +
+        '<select aria-label="Choose exercise" onchange="window._progressPick(this.value)">' + options + '</select>' +
+      '</label>' +
+    '</header>' +
+
+    '<div class="range-seg" role="group" aria-label="Time range">' +
+      Object.keys(PROGRESS_RANGES).map(r =>
+        '<button class="' + (r === progressRange ? "on" : "") + '" aria-pressed="' + (r === progressRange) + '" onclick="window._progressRange(\'' + r + '\')">' + r + '</button>'
+      ).join("") +
+    '</div>' +
+
+    '<section class="prog-top">' + headline + '</section>' +
+
+    (points.length > 1 ? '<div class="prog-chart"><canvas id="prog-chart" aria-label="' + esc(name) + ' top set over time" role="img"></canvas></div>' : '') +
+
+    '<section class="prog-stats">' +
+      '<div class="pstat"><div class="pstat-label">Est. 1RM</div><div class="pstat-value">' + (e1rm ?? "—") + '</div></div>' +
+      '<div class="pstat"><div class="pstat-label">Sessions</div><div class="pstat-value">' + points.length + '</div></div>' +
+      '<div class="pstat"><div class="pstat-label">Best vol</div><div class="pstat-value">' + (bestVol ? Math.round(bestVol).toLocaleString("en-US") : "—") + '</div></div>' +
+      '<div class="pstat"><div class="pstat-label">Best</div><div class="pstat-value accent">' + best + '</div></div>' +
+    '</section>' +
+
+    '<section class="prog-history">' +
+      '<div class="today-section-head">History</div>' +
+      all.slice(-5).reverse().map(p =>
+        '<div class="hist-row">' +
+          '<span class="hist-date">' + shortDate(p.date) + '</span>' +
+          '<span class="hist-sets">' + esc(setsSummary(p.ex.sets)) + '</span>' +
+          '<span class="hist-vol">' + (p.vol ? Math.round(p.vol).toLocaleString("en-US") : "—") + '</span>' +
+        '</div>').join("") +
+    '</section>';
+
+  if (points.length > 1) drawProgressChart(points, lower, unit);
+}
+
+function drawProgressChart(points, lower, unit) {
+  const canvas = document.getElementById("prog-chart");
+  if (!canvas || !window.Chart) return;
   if (progressChart) progressChart.destroy();
+  Chart.defaults.font.family = "'IBM Plex Sans', system-ui, sans-serif";
 
-  const isBodyweight = points.every(p => p.maxWeight === 0);
-  const yData = isBodyweight ? points.map(p => p.maxReps) : points.map(p => p.maxWeight);
+  const ctx = canvas.getContext("2d");
+  const fill = ctx.createLinearGradient(0, 0, 0, 180);
+  fill.addColorStop(0, "rgba(224,138,69,0.22)");
+  fill.addColorStop(1, "rgba(224,138,69,0)");
+  const spansYears = points[0].date.slice(0, 4) !== points[points.length - 1].date.slice(0, 4);
+  const last = points.length - 1;
 
-  progressChart = new Chart(ctx.getContext("2d"), {
+  progressChart = new Chart(ctx, {
     type: "line",
     data: {
-      labels: points.map(p => formatDate(p.date)),
-      datasets: [{ data: yData,
-        borderColor: "#E08A45", backgroundColor: "rgba(224,138,69,0.12)",
-        borderWidth: 2.5, pointBackgroundColor: "#E08A45",
-        pointRadius: 5, pointHoverRadius: 7, tension: 0.35, fill: true }]
+      labels: points.map(p => dateFromStr(p.date).toLocaleDateString("en-US",
+        spansYears ? { month: "short", year: "2-digit" } : { month: "short", day: "numeric" })),
+      datasets: [{
+        data: points.map(p => p.top),
+        borderColor: "#E08A45", backgroundColor: fill,
+        fill: "start",
+        borderWidth: 2.25, tension: 0.3,
+        pointRadius: points.map((_, i) => i === last ? 5 : 0),
+        pointHoverRadius: 5,
+        pointBackgroundColor: "#0B0C0E", pointBorderColor: "#E08A45", pointBorderWidth: 2.5
+      }]
     },
     options: {
-      responsive: true,
-      plugins: { legend: { display: false }, tooltip: {
-        backgroundColor: "#15171A", borderColor: "#2C3036", borderWidth: 1,
-        titleColor: "#F2F1EE", bodyColor: "#B4B7BC", padding: 12 }},
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: "index", intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: "#15171A", borderColor: "#2C3036", borderWidth: 1,
+          titleColor: "#F2F1EE", bodyColor: "#B4B7BC", padding: 10, displayColors: false,
+          callbacks: { label: c => c.parsed.y + " " + unit }
+        }
+      },
       scales: {
-        x: { ticks: { color: "#8B8F96", maxRotation: 40, font: { size: 11 } }, grid: { color: "#1C1F23" } },
-        y: { ticks: { color: "#8B8F96" }, grid: { color: "#1C1F23" },
-             title: { display: true, text: isBodyweight ? "Reps" : "Max Weight (lbs)", color: "#8B8F96" } }
+        x: { ticks: { color: "#8B8F96", maxTicksLimit: 4, maxRotation: 0, font: { size: 10 } }, grid: { display: false }, border: { display: false } },
+        // Lower-is-better lifts are flipped so the line still rises as you improve
+        y: { position: "right", reverse: lower, ticks: { color: "#8B8F96", maxTicksLimit: 4, font: { size: 10 } }, grid: { color: "#1C1F23" }, border: { display: false } }
       }
     }
   });
+}
 
-  const statsEl = document.getElementById("prog-stats");
-  if (!statsEl || points.length === 0) return;
-  const pr    = Math.max(...yData);
-  const delta = yData[yData.length - 1] - yData[0];
-  statsEl.innerHTML =
-    '<div class="stats-grid" style="margin-top:16px">' +
-      '<div class="stat-card"><div class="stat-label">Sessions</div>' +
-        '<div class="stat-value">' + points.length + '</div><div class="stat-sub">logged</div></div>' +
-      '<div class="stat-card"><div class="stat-label">' + (isBodyweight ? "Best Reps" : "Personal Record") + '</div>' +
-        '<div class="stat-value">' + pr + '</div><div class="stat-sub">' + (isBodyweight ? "reps" : "lbs") + '</div></div>' +
-      '<div class="stat-card"><div class="stat-label">Progress</div>' +
-        '<div class="stat-value ' + (delta >= 0 ? "positive" : "negative") + '">' + (delta >= 0 ? "+" : "") + delta + '</div>' +
-        '<div class="stat-sub">' + (isBodyweight ? "reps" : "lbs gained") + '</div></div>' +
-    '</div>';
+window._progressPick = function(name) {
+  localStorage.setItem("progress_ex", name);
+  renderProgress();
+};
+
+window._progressRange = function(r) {
+  progressRange = r;
+  renderProgress();
 };
 
 // ── Body Weight ──────────────────────────────────────────────
