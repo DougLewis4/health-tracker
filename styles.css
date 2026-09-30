@@ -1057,6 +1057,81 @@ a:hover { text-decoration: underline; }
   border: 1px dashed var(--border-light); color: var(--text-secondary); font-size: 14px; font-weight: 500;
 }
 
+/* ── Welcome ───────────────────────────────────────────────── */
+.welcome {
+  position: fixed; inset: 0; z-index: 700; overflow: hidden;
+  background: var(--bg-base); color: var(--text-primary);
+  transition: opacity 0.7s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.welcome.hidden { display: none; }
+.welcome-img {
+  position: absolute; left: 0; top: 0; width: 100%; height: 100%;
+  object-fit: cover; object-position: center top;
+  transform: translateY(var(--shift, 0%)) scale(1);
+  transform-origin: 50% 30%;
+  transition: transform 0.9s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.welcome-scrim {
+  position: absolute; inset: 0;
+  background: linear-gradient(180deg, rgba(11,12,14,0.80) 0%, rgba(11,12,14,0.55) 28%, rgba(11,12,14,0.45) 42%, rgba(11,12,14,0.82) 62%, #0B0C0E 86%);
+}
+.welcome-inner {
+  position: relative; height: 100%; display: flex; flex-direction: column; align-items: center;
+  padding: calc(env(safe-area-inset-top, 0px) + 56px) 28px calc(env(safe-area-inset-bottom, 0px) + 40px);
+  max-width: 520px; margin: 0 auto;
+}
+.welcome-mark {
+  font-family: var(--ff-display); font-weight: 700; font-size: 14px; letter-spacing: 0.32em;
+  text-transform: uppercase; color: #C9C7C1;
+}
+.welcome-quote { margin: 32px 0 0; text-align: center; }
+.welcome-quote p {
+  font-family: var(--ff-serif); font-style: italic; font-weight: 500; font-size: 27px; line-height: 1.3;
+  text-shadow: 0 1px 14px rgba(0,0,0,0.7);
+}
+.welcome-quote footer { margin-top: 14px; font-size: 11px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--accent); }
+.welcome-dial {
+  --dial: min(320px, 80vw, 42vh);
+  margin-top: auto; position: relative; width: var(--dial); height: var(--dial); flex-shrink: 0;
+  border-radius: 50%; transition: transform 0.7s cubic-bezier(0.4, 0, 0.2, 1);
+  -webkit-tap-highlight-color: transparent;
+}
+.welcome-dial svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.welcome-dial-text {
+  position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  color: var(--on-accent);
+}
+.welcome-go {
+  font-family: var(--ff-display); font-weight: 700; font-size: calc(var(--dial) * 0.175);
+  line-height: 1; letter-spacing: 0.02em; text-transform: uppercase;
+}
+.welcome-tap { font-size: 12px; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; margin-top: 8px; }
+.welcome-dial:focus-visible { outline: 2px solid var(--accent); outline-offset: 6px; }
+.welcome-date { margin-top: auto; font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase; color: #9A9DA3; }
+
+/* Tap: dial presses in, then the screen dissolves while the statue pushes in */
+.welcome.pressed .welcome-dial { transform: scale(0.94); transition-duration: 0.15s; }
+.welcome.leaving { opacity: 0; pointer-events: none; }
+.welcome.leaving .welcome-img { transform: translateY(var(--shift, 0%)) scale(1.06); }
+.welcome.leaving .welcome-dial { transform: scale(1.04); transition-duration: 0.7s; }
+/* ...and Today rises into place underneath. app-main only fades: a transform on it would
+   re-anchor the fixed Start button to app-main for the length of the animation. */
+body.entering .app-main { animation: todayFade 0.6s cubic-bezier(0.4, 0, 0.2, 1) 0.25s both; }
+body.entering .view > *:not(.start-btn), body.entering .app-header, body.entering .bottom-nav {
+  animation: todayIn 0.7s cubic-bezier(0.4, 0, 0.2, 1) 0.25s both;
+}
+body.entering .start-btn { animation: todayInCentered 0.7s cubic-bezier(0.4, 0, 0.2, 1) 0.25s both; }
+@keyframes todayFade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes todayIn { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
+@keyframes todayInCentered { from { opacity: 0; transform: translate(-50%, 16px); } to { opacity: 1; transform: translateX(-50%); } }
+@media (prefers-reduced-motion: reduce) {
+  .welcome { transition-duration: 0.3s; }
+  .welcome-img, .welcome-dial { transition: none; }
+  .welcome.pressed .welcome-dial, .welcome.leaving .welcome-dial { transform: none; }
+  .welcome.leaving .welcome-img { transform: translateY(var(--shift, 0%)); }
+  body.entering .app-main, body.entering .view > *, body.entering .app-header, body.entering .bottom-nav { animation: none; }
+}
+
 /* ── Workout summary ───────────────────────────────────────── */
 body.no-scroll { overflow: hidden; }
 .summary {

@@ -1127,6 +1127,70 @@ window._finishWorkout = async function(btn) {
   }
 };
 
+// ── Welcome screen ───────────────────────────────────────────
+// Shown on the first open of each day; tapping the dial fades into Today.
+const WELCOME_KEY = "welcome_seen";
+
+function bezelTicks() {
+  const c = 160;
+  let minor = "", major = "";
+  for (let i = 0; i < 60; i++) {
+    const a = i / 60 * Math.PI * 2, sn = Math.sin(a), cs = Math.cos(a);
+    const big = i % 5 === 0, r1 = 150, r2 = big ? 134 : 142;
+    const seg = "M" + (c + r1 * sn).toFixed(1) + " " + (c - r1 * cs).toFixed(1) +
+      "L" + (c + r2 * sn).toFixed(1) + " " + (c - r2 * cs).toFixed(1);
+    if (big) major += seg; else minor += seg;
+  }
+  return { minor, major };
+}
+
+function showWelcome() {
+  const el = document.getElementById("welcome-screen");
+  const statue = statueOfDay();
+  const quote = morningQuote();
+  const ticks = bezelTicks();
+  el.innerHTML =
+    '<img class="welcome-img" src="' + statue.src + '" alt="" style="--shift:' + statue.shift + '%">' +
+    '<div class="welcome-scrim"></div>' +
+    '<div class="welcome-inner">' +
+      '<div class="welcome-mark">Vitruvius</div>' +
+      '<blockquote class="welcome-quote">' +
+        '<p>“' + esc(quote.text) + '”</p>' +
+        '<footer>' + esc(quote.author) + '</footer>' +
+      '</blockquote>' +
+      '<button class="welcome-dial" onclick="window._welcomeGo(this)" aria-label="Let\'s go — open Today">' +
+        '<svg viewBox="0 0 320 320" aria-hidden="true">' +
+          '<path d="' + ticks.minor + '" stroke="#3A3E45" stroke-width="2" stroke-linecap="round"/>' +
+          '<path d="' + ticks.major + '" stroke="#9A9DA3" stroke-width="2.5" stroke-linecap="round"/>' +
+          '<circle cx="160" cy="160" r="124" fill="none" stroke="#23262B" stroke-width="1.5"/>' +
+          '<path d="M160 9 L155 1 L165 1 Z" fill="#E08A45"/>' +
+          '<circle cx="160" cy="160" r="108" fill="#E08A45"/>' +
+        '</svg>' +
+        '<span class="welcome-dial-text"><span class="welcome-go">Let\'s go.</span><span class="welcome-tap">Tap to begin</span></span>' +
+      '</button>' +
+      '<div class="welcome-date">' + new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" }) + '</div>' +
+    '</div>';
+  el.classList.remove("hidden");
+  document.body.classList.add("no-scroll");
+}
+
+window._welcomeGo = function(dial) {
+  const el = document.getElementById("welcome-screen");
+  if (el.classList.contains("pressed")) return;
+  localStorage.setItem(WELCOME_KEY, todayStr());
+  el.classList.add("pressed");
+  setTimeout(() => {
+    el.classList.add("leaving");
+    document.body.classList.add("entering");
+  }, 150);
+  setTimeout(() => {
+    el.classList.add("hidden");
+    el.classList.remove("pressed", "leaving");
+    el.innerHTML = "";
+    document.body.classList.remove("no-scroll", "entering");
+  }, 1100);
+};
+
 // ── Workout summary ──────────────────────────────────────────
 let summaryWorkout = null;
 
@@ -1559,6 +1623,7 @@ window._nav = showView;
 
 async function init() {
   loadDraft();
+  if (localStorage.getItem(WELCOME_KEY) !== todayStr()) showWelcome();
   document.getElementById("header-date").textContent =
     new Date().toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
 
