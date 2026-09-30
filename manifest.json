@@ -4,8 +4,8 @@
   "description": "Personal fitness and strength tracker",
   "start_url": "/health-tracker/",
   "display": "standalone",
-  "background_color": "#f4ede0",
-  "theme_color": "#f4ede0",
+  "background_color": "#0B0C0E",
+  "theme_color": "#0B0C0E",
   "icons": [
     {
       "src": "icon.png",

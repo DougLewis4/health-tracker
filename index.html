@@ -9,38 +9,10 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Vitruvius">
-  <meta name="theme-color" content="#f4ede0">
+  <meta name="theme-color" content="#0B0C0E">
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500;1,600&family=Inter:wght@400;500;600;700;800;900&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=5">
-  <style>
-    .inspire-block {
-      background: #fbf6ec !important;
-      border: 1px solid rgba(184,115,51,0.30) !important;
-      border-top: 3px solid #b87333 !important;
-      border-radius: 10px;
-      padding: 22px 20px 14px;
-      margin-bottom: 24px;
-      box-shadow: 0 2px 6px rgba(10,51,70,0.07), 0 8px 24px rgba(10,51,70,0.10);
-    }
-    .inspire-block p {
-      font-family: 'Cormorant Garamond', Georgia, serif;
-      font-size: 19px;
-      font-style: italic;
-      font-weight: 500;
-      color: #0a3346;
-      line-height: 1.5;
-    }
-    .inspire-block cite {
-      display: block;
-      font-family: 'Cormorant Garamond', Georgia, serif;
-      font-size: 14px;
-      font-style: italic;
-      font-weight: 400;
-      color: #a89c86;
-      margin-top: 10px;
-    }
-  </style>
+  <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Cormorant+Garamond:ital,wght@1,500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css?v=6">
 </head>
 <body>
 
@@ -99,49 +71,5 @@
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script type="module" src="app.js"></script>
-  <script>
-    (function() {
-      function styleQuoteCard() {
-        var dashboard = document.getElementById('view-dashboard');
-        if (!dashboard) return;
-        for (var i = 0; i < dashboard.children.length; i++) {
-          var card = dashboard.children[i];
-          if (card.tagName === 'DIV' && card.querySelector('cite')) {
-            card.style.background = '#fbf6ec';
-            card.style.border = '1px solid rgba(184,115,51,0.30)';
-            card.style.borderTop = '3px solid #b87333';
-            card.style.borderRadius = '10px';
-            card.style.padding = '22px 20px 14px';
-            card.style.marginBottom = '24px';
-            card.style.boxShadow = '0 2px 6px rgba(10,51,70,0.07),0 8px 24px rgba(10,51,70,0.10)';
-            var p = card.querySelector('p');
-            if (p) {
-              p.style.fontFamily = "'Cormorant Garamond',Georgia,serif";
-              p.style.fontSize = '19px';
-              p.style.fontStyle = 'italic';
-              p.style.fontWeight = '500';
-              p.style.color = '#0a3346';
-              p.style.lineHeight = '1.5';
-            }
-            var cite = card.querySelector('cite');
-            if (cite) {
-              cite.style.display = 'block';
-              cite.style.fontFamily = "'Cormorant Garamond',Georgia,serif";
-              cite.style.fontSize = '14px';
-              cite.style.fontStyle = 'italic';
-              cite.style.fontWeight = '400';
-              cite.style.color = '#a89c86';
-              cite.style.marginTop = '10px';
-            }
-            break;
-          }
-        }
-      }
-      var dashboard = document.getElementById('view-dashboard');
-      if (dashboard) {
-        new MutationObserver(styleQuoteCard).observe(dashboard, {childList: true});
-      }
-    })();
-  </script>
 </body>
 </html>

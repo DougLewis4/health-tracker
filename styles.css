@@ -1,31 +1,33 @@
 /* ── Variables ─────────────────────────────────────────────── */
 :root {
-  --bg-base:        #f4ede0;
-  --bg-main:        #ede4d3;
-  --bg-card:        #fbf6ec;
-  --bg-card-hover:  #efe6d3;
-  --bg-input:       #f0e8d6;
-  --accent:         #b87333;
-  --accent-hover:   #c98a4f;
-  --accent-dim:     rgba(184, 115, 51, 0.12);
-  --accent-border:  rgba(184, 115, 51, 0.30);
-  --text-primary:   #0a3346;
-  --text-secondary: #7a6f5c;
-  --text-muted:     #a89c86;
-  --border:         rgba(10, 51, 70, 0.10);
-  --border-light:   rgba(10, 51, 70, 0.18);
-  --success:        #3a7d5c;
-  --danger:         #a64a3a;
-  --warn:           #b87333;
+  --bg-base:        #0B0C0E;
+  --bg-main:        #0B0C0E;
+  --bg-card:        #15171A;
+  --bg-card-hover:  #1C1F23;
+  --bg-input:       #1C1F23;
+  --accent:         #E08A45;
+  --accent-hover:   #F0A266;
+  --accent-dim:     rgba(224, 138, 69, 0.14);
+  --accent-border:  rgba(224, 138, 69, 0.35);
+  --on-accent:      #0B0C0E;
+  --text-primary:   #F2F1EE;
+  --text-secondary: #B4B7BC;
+  --text-muted:     #8B8F96;
+  --border:         #23262B;
+  --border-light:   #2C3036;
+  --success:        #5BC98A;
+  --danger:         #E0685A;
+  --warn:           #E08A45;
   --header-h:       56px;
   --nav-h:          68px;
-  --radius:         10px;
-  --radius-sm:      6px;
+  --radius:         12px;
+  --radius-sm:      8px;
   --radius-lg:      16px;
-  --ff-display:     'Space Grotesk', system-ui, sans-serif;
+  --ff-body:        'IBM Plex Sans', system-ui, sans-serif;
+  --ff-display:     'Barlow Condensed', system-ui, sans-serif;
   --ff-serif:       'Cormorant Garamond', Georgia, serif;
-  --shadow-card:    0 2px 6px rgba(10, 51, 70, 0.07), 0 8px 24px rgba(10, 51, 70, 0.10);
-  --shadow-hero:    0 4px 8px rgba(10, 51, 70, 0.10), 0 12px 32px rgba(10, 51, 70, 0.14);
+  --shadow-card:    none;
+  --shadow-hero:    none;
 }
 
 /* ── Reset ─────────────────────────────────────────────────── */
@@ -33,7 +35,7 @@
 html { height: 100%; background: var(--bg-base); }
 body {
   min-height: 100%;
-  font-family: 'Inter', system-ui, sans-serif;
+  font-family: var(--ff-body);
   background: var(--bg-base);
   color: var(--text-primary);
   font-size: 15px;
@@ -60,17 +62,19 @@ a:hover { text-decoration: underline; }
   z-index: 100;
 }
 .app-logo {
-  font-family: var(--ff-serif);
-  font-size: 24px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  color: var(--accent);
+  font-family: var(--ff-display);
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--text-primary);
 }
 .header-date {
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 500;
   color: var(--text-muted);
-  letter-spacing: 0.02em;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 .app-main {
   margin-top: var(--header-h);
@@ -113,12 +117,12 @@ a:hover { text-decoration: underline; }
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
-.nav-btn.active { color: var(--accent); }
+.nav-btn.active { color: var(--text-primary); }
 .nav-btn:hover:not(.active) { color: var(--text-secondary); }
 
 /* ── Typography ────────────────────────────────────────────── */
 .view-title {
-  font-family: var(--ff-serif);
+  font-family: var(--ff-display);
   font-size: 28px;
   font-weight: 500;
   letter-spacing: 0.1px;
@@ -149,7 +153,7 @@ a:hover { text-decoration: underline; }
   justify-content: center;
   gap: 6px;
   background: var(--accent);
-  color: #f4ede0;
+  color: var(--on-accent);
   font-size: 14px;
   font-weight: 700;
   letter-spacing: 0.04em;
@@ -192,7 +196,7 @@ a:hover { text-decoration: underline; }
 .input-field:focus { border-color: var(--accent); }
 .input-field::placeholder { color: var(--text-muted); }
 .select-field {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23a89c86' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238B8F96' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 12px center;
   padding-right: 36px;
@@ -212,7 +216,7 @@ a:hover { text-decoration: underline; }
 
 /* Daily Inspiration Block */
 .inspire-block {
-  background: #ffffff;
+  background: var(--bg-card);
   border-radius: var(--radius);
   padding: 22px 20px 14px;
   margin-bottom: 24px;
@@ -221,7 +225,7 @@ a:hover { text-decoration: underline; }
   box-shadow: var(--shadow-card);
 }
 .inspire-text {
-  font-family: 'Cormorant Garamond', Georgia, serif;
+  font-family: var(--ff-serif);
   font-size: 19px;
   font-style: italic;
   font-weight: 500;
@@ -230,7 +234,7 @@ a:hover { text-decoration: underline; }
 }
 .inspire-author {
   display: block;
-  font-family: 'Cormorant Garamond', Georgia, serif;
+  font-family: var(--ff-serif);
   font-size: 14px;
   font-style: italic;
   font-weight: 400;
@@ -256,7 +260,7 @@ a:hover { text-decoration: underline; }
   margin-bottom: 12px;
 }
 .bw-num {
-  font-family: var(--ff-serif);
+  font-family: var(--ff-display);
   font-size: 54px;
   font-weight: 500;
   color: var(--text-primary);
@@ -281,7 +285,7 @@ a:hover { text-decoration: underline; }
   margin-bottom: 4px;
 }
 .bw-goal-val {
-  font-family: var(--ff-serif);
+  font-family: var(--ff-display);
   font-size: 24px;
   font-weight: 500;
   color: var(--text-primary);
@@ -340,7 +344,7 @@ a:hover { text-decoration: underline; }
 .stat-pill-icon.fire { background: rgba(194, 138, 58, 0.15); }
 .stat-pill-icon.trophy { background: rgba(46, 204, 113, 0.12); }
 .stat-pill-num {
-  font-family: var(--ff-serif);
+  font-family: var(--ff-display);
   font-size: 30px;
   font-weight: 500;
   color: var(--text-primary);
@@ -365,7 +369,7 @@ a:hover { text-decoration: underline; }
   box-shadow: var(--shadow-card);
 }
 .week-card-title {
-  font-family: var(--ff-serif);
+  font-family: var(--ff-display);
   font-size: 20px;
   font-weight: 500;
   color: var(--text-primary);
@@ -403,7 +407,7 @@ a:hover { text-decoration: underline; }
 .week-day-dot.today {
   background: var(--accent);
   border-color: var(--accent);
-  color: #f4ede0;
+  color: var(--on-accent);
 }
 .week-day-dot.done {
   background: var(--accent-dim);
@@ -435,7 +439,7 @@ a:hover { text-decoration: underline; }
   margin-bottom: 4px;
 }
 .today-card-title {
-  font-family: var(--ff-serif);
+  font-family: var(--ff-display);
   font-size: 20px;
   font-weight: 500;
   color: var(--text-primary);
@@ -525,7 +529,7 @@ a:hover { text-decoration: underline; }
 .muscle-tab.active {
   background: var(--accent);
   border-color: var(--accent);
-  color: #f4ede0;
+  color: var(--on-accent);
 }
 .muscle-tab:hover:not(.active) {
   color: var(--text-secondary);
@@ -643,7 +647,7 @@ a:hover { text-decoration: underline; }
 }
 .pr-badge.new-pr {
   background: var(--accent);
-  color: #f4ede0;
+  color: var(--on-accent);
   border-color: var(--accent);
 }
 
@@ -720,7 +724,7 @@ a:hover { text-decoration: underline; }
 .btn-sheet-remove {
   font-size: 13px;
   font-weight: 600;
-  color: #f4ede0;
+  color: var(--on-accent);
   background: var(--accent);
   border: 1px solid var(--accent);
   padding: 5px 13px;
@@ -888,7 +892,7 @@ a:hover { text-decoration: underline; }
   border-bottom: 1px solid var(--border);
 }
 .current-weight-value {
-  font-family: var(--ff-serif);
+  font-family: var(--ff-display);
   font-size: 56px;
   font-weight: 500;
   letter-spacing: -0.5px;
@@ -972,7 +976,7 @@ a:hover { text-decoration: underline; }
   margin-bottom: 20px;
 }
 .sheet-title {
-  font-family: var(--ff-serif);
+  font-family: var(--ff-display);
   font-size: 24px;
   font-weight: 500;
   color: var(--text-primary);
@@ -1006,14 +1010,14 @@ a:hover { text-decoration: underline; }
 .whoop-score-num {
   position: absolute; inset: 0;
   display: flex; align-items: center; justify-content: center;
-  font-family: var(--ff-serif);
+  font-family: var(--ff-display);
   font-size: 17px; font-weight: 500; letter-spacing: 0;
 }
 .whoop-score-label { font-size: 12px; font-weight: 700; letter-spacing: 0.03em; }
 .whoop-metric-name { font-size: 10px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.07em; }
 .whoop-stats-grid { flex: 1; display: grid; grid-template-columns: repeat(3,1fr); gap: 8px; }
 .whoop-stat { background: var(--bg-input); border-radius: var(--radius-sm); padding: 10px 6px; text-align: center; }
-.whoop-stat-val { font-family: var(--ff-serif); font-size: 22px; font-weight: 500; letter-spacing: 0; color: var(--text-primary); line-height: 1.1; }
+.whoop-stat-val { font-family: var(--ff-display); font-size: 22px; font-weight: 500; letter-spacing: 0; color: var(--text-primary); line-height: 1.1; }
 .whoop-stat-lbl { font-size: 9px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; margin-top: 3px; }
 
 /* ── Workout list (recent workouts on dashboard) ───────────── */
@@ -1053,7 +1057,7 @@ a:hover { text-decoration: underline; }
   padding: 24px 20px 32px;
 }
 .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
-.modal-header h3 { font-family: var(--ff-serif); font-size: 22px; font-weight: 500; }
+.modal-header h3 { font-family: var(--ff-display); font-size: 22px; font-weight: 500; }
 .modal-close { font-size: 18px; color: var(--text-muted); padding: 4px; transition: color 0.15s; }
 .modal-close:hover { color: var(--text-primary); }
 .modal-body { display: flex; flex-direction: column; gap: 12px; }
@@ -1075,8 +1079,8 @@ a:hover { text-decoration: underline; }
   position: fixed;
   bottom: calc(var(--nav-h) + 16px);
   left: 50%; transform: translateX(-50%);
-  background: #0a3346; border: 1px solid transparent;
-  color: #f4ede0;
+  background: var(--bg-card-hover); border: 1px solid var(--border-light);
+  color: var(--text-primary);
   font-size: 14px; font-weight: 600;
   padding: 12px 20px; border-radius: 8px;
   z-index: 300; white-space: nowrap;

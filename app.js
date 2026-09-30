@@ -473,8 +473,8 @@ function whoopSectionHTML() {
   const rhr    = rec?.score?.resting_heart_rate ? Math.round(rec.score.resting_heart_rate) : null;
   const strain = cycle?.score?.strain           ? cycle.score.strain.toFixed(1)            : null;
   let scoreColor, scoreLabel;
-  if (score === null)   { scoreColor = '#4a728f'; scoreLabel = '—'; }
-  else if (score >= 67) { scoreColor = '#3a7d5c'; scoreLabel = 'Peak'; }
+  if (score === null)   { scoreColor = '#8B8F96'; scoreLabel = '—'; }
+  else if (score >= 67) { scoreColor = '#5BC98A'; scoreLabel = 'Peak'; }
   else if (score >= 34) { scoreColor = '#f0a500'; scoreLabel = 'Good'; }
   else                  { scoreColor = '#e05050'; scoreLabel = 'Low'; }
   const pct = score ?? 0;
@@ -594,9 +594,9 @@ function renderDashboard() {
   el.innerHTML =
     '<span class="dash-greeting">' + getGreeting() + '</span>' +
 
-    '<div class=”inspire-block”>' +
-      '<p class=”inspire-text”>”' + esc(DAILY_QUOTE.text) + '”</p>' +
-      '<cite class=”inspire-author”>— ' + esc(DAILY_QUOTE.author) + '</cite>' +
+    '<div class="inspire-block">' +
+      '<p class="inspire-text">“' + esc(DAILY_QUOTE.text) + '”</p>' +
+      '<cite class="inspire-author">— ' + esc(DAILY_QUOTE.author) + '</cite>' +
     '</div>' +
 
     (curWeight
@@ -621,7 +621,7 @@ function renderDashboard() {
             '<span style="font-size:10px;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-muted)">Year elapsed</span>' +
             '<span style="font-size:10px;color:var(--text-muted)">' + yearPct.toFixed(0) + '%</span>' +
           '</div>' +
-          '<div class="goal-bar-track"><div class="goal-bar-fill" style="width:' + yearPct.toFixed(1) + '%;background:rgba(10,51,70,0.35)"></div></div>' +
+          '<div class="goal-bar-track"><div class="goal-bar-fill" style="width:' + yearPct.toFixed(1) + '%;background:var(--border-light)"></div></div>' +
           '<div class="goal-bar-labels">' +
             '<span>Jan 1</span>' +
             '<span>Dec 31, 2026</span>' +
@@ -1203,19 +1203,19 @@ window._updateChart = function(exName) {
     data: {
       labels: points.map(p => formatDate(p.date)),
       datasets: [{ data: yData,
-        borderColor: "#b87333", backgroundColor: "rgba(184,115,51,0.08)",
-        borderWidth: 2.5, pointBackgroundColor: "#b87333",
+        borderColor: "#E08A45", backgroundColor: "rgba(224,138,69,0.12)",
+        borderWidth: 2.5, pointBackgroundColor: "#E08A45",
         pointRadius: 5, pointHoverRadius: 7, tension: 0.35, fill: true }]
     },
     options: {
       responsive: true,
       plugins: { legend: { display: false }, tooltip: {
-        backgroundColor: "#fbf6ec", borderColor: "rgba(184,115,51,0.30)", borderWidth: 1,
-        titleColor: "#0a3346", bodyColor: "#7a6f5c", padding: 12 }},
+        backgroundColor: "#15171A", borderColor: "#2C3036", borderWidth: 1,
+        titleColor: "#F2F1EE", bodyColor: "#B4B7BC", padding: 12 }},
       scales: {
-        x: { ticks: { color: "#a89c86", maxRotation: 40, font: { size: 11 } }, grid: { color: "rgba(10,51,70,0.08)" } },
-        y: { ticks: { color: "#a89c86" }, grid: { color: "rgba(10,51,70,0.08)" },
-             title: { display: true, text: isBodyweight ? "Reps" : "Max Weight (lbs)", color: "#7a6f5c" } }
+        x: { ticks: { color: "#8B8F96", maxRotation: 40, font: { size: 11 } }, grid: { color: "#1C1F23" } },
+        y: { ticks: { color: "#8B8F96" }, grid: { color: "#1C1F23" },
+             title: { display: true, text: isBodyweight ? "Reps" : "Max Weight (lbs)", color: "#8B8F96" } }
       }
     }
   });
@@ -1300,19 +1300,19 @@ function renderBWChart() {
     data: {
       labels: sorted.map(d => formatDate(d.date)),
       datasets: [{ data: sorted.map(d => d.weight),
-        borderColor: "#b87333", backgroundColor: "rgba(184,115,51,0.08)",
-        borderWidth: 2.5, pointBackgroundColor: "#b87333",
+        borderColor: "#E08A45", backgroundColor: "rgba(224,138,69,0.12)",
+        borderWidth: 2.5, pointBackgroundColor: "#E08A45",
         pointRadius: 4, tension: 0.35, fill: true }]
     },
     options: {
       responsive: true,
       plugins: { legend: { display: false }, tooltip: {
-        backgroundColor: "#fbf6ec", borderColor: "rgba(184,115,51,0.30)", borderWidth: 1,
-        titleColor: "#0a3346", bodyColor: "#7a6f5c", padding: 12 }},
+        backgroundColor: "#15171A", borderColor: "#2C3036", borderWidth: 1,
+        titleColor: "#F2F1EE", bodyColor: "#B4B7BC", padding: 12 }},
       scales: {
-        x: { ticks: { color: "#a89c86", maxRotation: 40, font: { size: 11 } }, grid: { color: "rgba(10,51,70,0.08)" } },
-        y: { ticks: { color: "#a89c86" }, grid: { color: "rgba(10,51,70,0.08)" },
-             title: { display: true, text: "lbs", color: "#7a6f5c" } }
+        x: { ticks: { color: "#8B8F96", maxRotation: 40, font: { size: 11 } }, grid: { color: "#1C1F23" } },
+        y: { ticks: { color: "#8B8F96" }, grid: { color: "#1C1F23" },
+             title: { display: true, text: "lbs", color: "#8B8F96" } }
       }
     }
   });
