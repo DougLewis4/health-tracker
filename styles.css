@@ -553,6 +553,27 @@ a:hover { text-decoration: underline; }
 }
 
 /* ── Log Workout ───────────────────────────────────────────── */
+.workout-timer {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--ff-display);
+  font-size: 22px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+  line-height: 1;
+}
+.workout-timer-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: timerPulse 2s ease-in-out infinite;
+}
+.sheet-sub .workout-timer { font-size: 15px; margin-left: 8px; vertical-align: middle; }
+@keyframes timerPulse { 50% { opacity: 0.35; } }
+@media (prefers-reduced-motion: reduce) { .workout-timer-dot { animation: none; } }
 .log-date-row { margin-bottom: 16px; }
 .log-progress-bar-track {
   background: var(--border);

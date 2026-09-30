@@ -257,6 +257,76 @@ function daysAgo(dateStr) {
   return diff + " days ago";
 }
 
+// ── Workout Timer ────────────────────────────────────────────
+// Start time lives in localStorage so the clock survives the app being closed mid-workout.
+const TIMER_KEY = "workout_started_at";
+const TIMER_STALE_MS = 12 * 60 * 60 * 1000;
+
+function timerStartedAt() {
+  const t = parseInt(localStorage.getItem(TIMER_KEY) || "0");
+  if (t && Date.now() - t > TIMER_STALE_MS) {
+    localStorage.removeItem(TIMER_KEY);
+    return 0;
+  }
+  return t;
+}
+
+function startTimerIfNeeded() {
+  if (!timerStartedAt()) localStorage.setItem(TIMER_KEY, String(Date.now()));
+}
+
+function clearTimer() {
+  localStorage.removeItem(TIMER_KEY);
+}
+
+function formatElapsed(ms) {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = String(total % 60).padStart(2, "0");
+  return h > 0 ? h + ":" + String(m).padStart(2, "0") + ":" + s : m + ":" + s;
+}
+
+function timerChipHTML() {
+  const t = timerStartedAt();
+  if (!t) return "";
+  return '<span class="workout-timer"><span class="workout-timer-dot"></span>' +
+    '<span class="workout-timer-time">' + formatElapsed(Date.now() - t) + '</span></span>';
+}
+
+// In-progress workout is kept as a draft so entered sets survive the app being closed.
+const DRAFT_KEY = "workout_draft";
+
+function saveDraft() {
+  localStorage.setItem(DRAFT_KEY, JSON.stringify(logState));
+}
+
+function loadDraft() {
+  try {
+    const d = JSON.parse(localStorage.getItem(DRAFT_KEY) || "null");
+    if (d && d.exercises && (Object.keys(d.exercises).length || d.cardio)) {
+      logState = { date: d.date || todayStr(), exercises: d.exercises, cardio: d.cardio || "", notes: d.notes || "" };
+    }
+  } catch (e) { localStorage.removeItem(DRAFT_KEY); }
+}
+
+// Called after exercises or cardio are added or removed: starts the clock on the first one,
+// resets it if the workout is emptied, saves the draft, and refreshes any visible timer chips.
+function syncTimer() {
+  const hasWork = Object.keys(logState.exercises).length > 0 || !!logState.cardio;
+  if (hasWork) startTimerIfNeeded();
+  else clearTimer();
+  saveDraft();
+  document.querySelectorAll(".timer-slot").forEach(el => { el.innerHTML = timerChipHTML(); });
+}
+
+setInterval(() => {
+  const t = timerStartedAt();
+  if (!t) return;
+  const text = formatElapsed(Date.now() - t);
+  document.querySelectorAll(".workout-timer-time").forEach(el => { el.textContent = text; });
+}, 1000);
+
 function toast(msg) {
   const el = document.createElement("div");
   el.className = "toast";
@@ -741,7 +811,7 @@ function renderSheetContent() {
     '<div class="sheet-header">' +
       '<div>' +
         '<div class="sheet-title">Today\'s Workout</div>' +
-        '<div class="sheet-sub">' + esc(formatDate(logState.date)) + '</div>' +
+        '<div class="sheet-sub">' + esc(formatDate(logState.date)) + ' <span class="timer-slot">' + timerChipHTML() + '</span></div>' +
       '</div>' +
       '<button class="modal-close" onclick="window._closeSheet()">&#x2715;</button>' +
     '</div>' +
@@ -769,11 +839,11 @@ function renderSheetContent() {
       (bikeAdded
         ? '<div class="sheet-bike-row">' +
             '<span class="sheet-bike-name">🚴 Bike</span>' +
-            '<input type="number" class="input-field cardio-input" id="log-cardio" min="0" placeholder="0" value="' + esc(String(logState.cardio || "")) + '" onchange="logState.cardio=this.value">' +
+            '<input type="number" class="input-field cardio-input" id="log-cardio" min="0" placeholder="0" value="' + esc(String(logState.cardio || "")) + '" onchange="window._setCardio(this.value, false)">' +
             '<span class="cardio-unit">min</span>' +
-            '<button class="btn-sheet-remove" onclick="logState.cardio=\'\';renderSheetContent()">Remove</button>' +
+            '<button class="btn-sheet-remove" onclick="window._setCardio(\'\', true)">Remove</button>' +
           '</div>'
-        : '<button class="btn-sheet-add" style="width:100%;padding:10px;display:block;text-align:center" onclick="logState.cardio=\'30\';renderSheetContent()">+ Add Bike</button>') +
+        : '<button class="btn-sheet-add" style="width:100%;padding:10px;display:block;text-align:center" onclick="window._setCardio(\'30\', true)">+ Add Bike</button>') +
     '</div>';
 
   el.innerHTML =
@@ -797,12 +867,19 @@ function renderSheetExList(group) {
   }).join("");
 }
 
+window._setCardio = function(val, rerender) {
+  logState.cardio = val;
+  syncTimer();
+  if (rerender) renderSheetContent();
+};
+
 window._sheetToggleEx = function(exName, group) {
   if (logState.exercises[exName]) {
     delete logState.exercises[exName];
   } else {
     logState.exercises[exName] = [{ weight: lastWeightFor(exName), reps: "", muscleGroup: group }];
   }
+  syncTimer();
   // Refresh exercise list
   document.getElementById("log-ex-list").innerHTML = renderSheetExList(group);
   // Update selected count label
@@ -837,7 +914,10 @@ function renderLog() {
         '<div class="view-eyebrow">Log Workout</div>' +
         '<h2 class="view-title">Exercises</h2>' +
       '</div>' +
-      '<span id="log-selected-count" style="font-size:13px;color:var(--accent);font-weight:600' + (selectedCount === 0 ? ';display:none' : '') + '">' + selectedCount + ' selected</span>' +
+      '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">' +
+        '<span class="timer-slot">' + timerChipHTML() + '</span>' +
+        '<span id="log-selected-count" style="font-size:13px;color:var(--accent);font-weight:600' + (selectedCount === 0 ? ';display:none' : '') + '">' + selectedCount + ' selected</span>' +
+      '</div>' +
     '</div>' +
 
     '<div class="log-date-row"><label class="input-label">Date</label>' +
@@ -877,9 +957,9 @@ function renderLog() {
     '<button class="btn-primary save-btn" id="save-btn" onclick="window._saveWorkout()">Save Workout</button>';
 
   document.getElementById("log-notes").value = logState.notes;
-  document.getElementById("log-date").addEventListener("change", e => { logState.date = e.target.value; });
-  document.getElementById("log-cardio").addEventListener("change", e => { logState.cardio = e.target.value; });
-  document.getElementById("log-notes").addEventListener("change", e => { logState.notes = e.target.value; });
+  document.getElementById("log-date").addEventListener("change", e => { logState.date = e.target.value; saveDraft(); });
+  document.getElementById("log-cardio").addEventListener("change", e => { logState.cardio = e.target.value; syncTimer(); });
+  document.getElementById("log-notes").addEventListener("change", e => { logState.notes = e.target.value; saveDraft(); });
 }
 
 function renderExList(group) {
@@ -1054,6 +1134,7 @@ window._toggleEx = function(exName, group) {
   } else {
     logState.exercises[exName] = [{ weight: lastWeightFor(exName), reps: "", muscleGroup: group }];
   }
+  syncTimer();
   refreshExRow(exName, group);
   // Update tab count badges and header selected count (same pattern used in _sheetToggleEx)
   const groups = Object.keys(EXERCISES);
@@ -1075,6 +1156,7 @@ window._toggleEx = function(exName, group) {
 window._updSet = function(exName, i, field, val) {
   if (logState.exercises[exName]) {
     logState.exercises[exName][i][field] = val;
+    saveDraft();
     // Refresh PR badge when weight changes
     if (field === "weight") {
       const safeExId = safeId(exName);
@@ -1105,6 +1187,7 @@ window._addSet = function(exName) {
   const sets = logState.exercises[exName];
   const prev = sets[sets.length - 1];
   sets.push({ weight: prev.weight, reps: prev.reps, muscleGroup: prev.muscleGroup });
+  saveDraft();
   reRenderSetLogger(exName);
 };
 
@@ -1112,6 +1195,7 @@ window._rmSet = function(exName, i) {
   const sets = logState.exercises[exName];
   if (sets.length <= 1) return;
   sets.splice(i, 1);
+  saveDraft();
   reRenderSetLogger(exName);
 };
 
@@ -1134,14 +1218,23 @@ window._saveWorkout = async function() {
   const btn = document.getElementById("save-btn");
   if (btn) { btn.textContent = "Saving…"; btn.disabled = true; }
 
+  // Only timed if logged for today; back-dated entries have no meaningful clock
+  const startedAt = timerStartedAt();
+  const durationMin = startedAt && logState.date === todayStr()
+    ? Math.max(1, Math.round((Date.now() - startedAt) / 60000))
+    : null;
+
   try {
     await saveWorkoutDoc({
       date: logState.date,
       exercises,
       cardio: logState.cardio ? parseInt(logState.cardio) : null,
-      notes: logState.notes || ""
+      notes: logState.notes || "",
+      durationMin
     });
     logState = { date: todayStr(), exercises: {}, cardio: "", notes: "" };
+    clearTimer();
+    localStorage.removeItem(DRAFT_KEY);
     toast("Workout saved!");
     if (sheetOpen) window._closeSheet();
     showView("dashboard");
@@ -1335,6 +1428,7 @@ window._saveBW = async function() {
 window._nav = showView;
 
 async function init() {
+  loadDraft();
   document.getElementById("header-date").textContent =
     new Date().toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
 
