@@ -1,5 +1,5 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.12.1/firebase-app.js";
-import { getFirestore, collection, addDoc, getDocs, query, orderBy, serverTimestamp }
+import { getFirestore, collection, addDoc, getDocs, query, orderBy, serverTimestamp, doc, updateDoc }
   from "https://www.gstatic.com/firebasejs/12.12.1/firebase-firestore.js";
 
 // ── Firebase ─────────────────────────────────────────────────
@@ -23,10 +23,40 @@ const WHOOP_SCOPES     = 'read:recovery read:cycles read:sleep read:profile offl
 
 // ── App Constants ─────────────────────────────────────────────
 const GOAL_WEIGHT = 215;
-const DAILY_QUOTE = {
-  text: "You have power over your mind — not outside events. Realize this, and you will find strength.",
-  author: "Marcus Aurelius"
-};
+
+// Classic philosophers only. The welcome screen and the workout summary each pick one per day.
+const QUOTES = [
+  { text: "You have power over your mind — not outside events. Realize this, and you will find strength.", author: "Marcus Aurelius" },
+  { text: "Difficulties strengthen the mind, as labor does the body.", author: "Seneca" },
+  { text: "First say to yourself what you would be; then do what you have to do.", author: "Epictetus" },
+  { text: "The impediment to action advances action. What stands in the way becomes the way.", author: "Marcus Aurelius" },
+  { text: "It is not because things are difficult that we do not dare; it is because we do not dare that they are difficult.", author: "Seneca" },
+  { text: "No great thing is created suddenly.", author: "Epictetus" },
+  { text: "Waste no more time arguing about what a good man should be. Be one.", author: "Marcus Aurelius" },
+  { text: "As long as you live, keep learning how to live.", author: "Seneca" },
+  { text: "Difficulties are things that show a person what they are.", author: "Epictetus" },
+  { text: "We suffer more often in imagination than in reality.", author: "Seneca" },
+  { text: "Confine yourself to the present.", author: "Marcus Aurelius" },
+  { text: "It is a disgrace to grow old through sheer carelessness before seeing what manner of man you may become by developing your bodily strength and beauty to their highest limit.", author: "Socrates" }
+];
+
+// Background images rotate daily. shift nudges an image up (negative %) so its subject clears the dial.
+const STATUES = [
+  { src: "images/statue-columns.webp", shift: -14 },
+  { src: "images/statue-rope.webp",    shift: 0 },
+  { src: "images/statue-stone.webp",   shift: 0 },
+  { src: "images/statue-boulder.webp", shift: 0 },
+  { src: "images/statue-runner.webp",  shift: 0 }
+];
+
+function dayNumber() {
+  const d = new Date();
+  return Math.floor(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 86400000);
+}
+function statueOfDay()  { return STATUES[dayNumber() % STATUES.length]; }
+function morningQuote() { return QUOTES[dayNumber() % QUOTES.length]; }
+// Offset by half the list so the closing quote never matches the morning one
+function closingQuote() { return QUOTES[(dayNumber() + Math.floor(QUOTES.length / 2)) % QUOTES.length]; }
 
 // ── Escape user-provided strings before inserting into HTML ───
 function esc(str) {
@@ -240,8 +270,9 @@ let logState = {
 };
 
 // ── Utilities ────────────────────────────────────────────────
+// Local calendar date (toISOString is UTC, which rolls over to tomorrow on US evenings)
 function todayStr() {
-  return new Date().toISOString().split("T")[0];
+  return isoDate(new Date());
 }
 
 function formatDate(dateStr) {
@@ -344,18 +375,6 @@ function maxW(ex) {
   return Math.max(...ex.sets.map(s => parseFloat(s.weight) || 0));
 }
 
-function maxWeightEver(exName) {
-  let best = 0;
-  for (const w of allWorkouts) {
-    const ex = (w.exercises || []).find(e => e.name === exName);
-    if (ex?.sets) {
-      const m = Math.max(...ex.sets.map(s => parseFloat(s.weight) || 0));
-      if (m > best) best = m;
-    }
-  }
-  return best;
-}
-
 // ── Firestore ────────────────────────────────────────────────
 async function loadWorkouts() {
   const q = query(collection(db, "workouts"), orderBy("date", "desc"));
@@ -368,7 +387,10 @@ async function saveWorkoutDoc(data) {
     ...data,
     savedAt: serverTimestamp()
   });
-  allWorkouts.unshift({ id: ref.id, ...data });
+  const saved = { id: ref.id, ...data };
+  allWorkouts.unshift(saved);
+  allWorkouts.sort((a, b) => b.date.localeCompare(a.date));
+  return saved;
 }
 
 async function loadBodyweights() {
@@ -662,47 +684,54 @@ function renderDashboard() {
     '</button>';
 }
 
-// ── Bottom Sheet ─────────────────────────────────────────────
+// ── Exercise picker sheet ────────────────────────────────────
 window._openSheet = function() {
   sheetOpen = true;
-  logState.date = todayStr();
-  const overlay = document.getElementById("workout-sheet");
-  overlay.classList.remove("hidden");
+  // A fresh workout starts today; an in-progress one keeps its date
+  if (!hasWorkInProgress()) logState.date = todayStr();
+  document.getElementById("workout-sheet").classList.remove("hidden");
   renderSheetContent();
 };
 
 window._closeSheet = function() {
   sheetOpen = false;
   document.getElementById("workout-sheet").classList.add("hidden");
-  // Clear sheet DOM so IDs don't conflict with log view
   document.getElementById("sheet-content").innerHTML = "";
 };
+
+// Close the picker and go to the Log screen
+window._sheetContinue = function() {
+  window._closeSheet();
+  showView("log");
+};
+
+function hasWorkInProgress() {
+  return Object.keys(logState.exercises).length > 0 || !!logState.cardio;
+}
+
+function sheetFooterLabel() {
+  const n = Object.keys(logState.exercises).length;
+  if (!hasWorkInProgress()) return "Pick at least one exercise";
+  return n ? "Continue · " + n + (n === 1 ? " exercise" : " exercises") : "Continue";
+}
 
 function renderSheetContent() {
   const el = document.getElementById("sheet-content");
   const groups = Object.keys(EXERCISES);
-  const selectedCount = Object.keys(logState.exercises).length;
   const bikeAdded = !!logState.cardio;
 
   const scrollHTML =
     '<div class="sheet-header">' +
       '<div>' +
-        '<div class="sheet-title">Today\'s Workout</div>' +
+        '<div class="sheet-title">Pick exercises</div>' +
         '<div class="sheet-sub">' + esc(formatDate(logState.date)) + ' <span class="timer-slot">' + timerChipHTML() + '</span></div>' +
       '</div>' +
-      '<button class="modal-close" onclick="window._closeSheet()">&#x2715;</button>' +
-    '</div>' +
-
-    '<div id="sheet-selected-count" style="font-size:13px;color:var(--accent);font-weight:600;margin-bottom:12px;' +
-      (selectedCount === 0 ? 'display:none' : '') + '">' +
-      selectedCount + ' exercise' + (selectedCount !== 1 ? 's' : '') + ' selected' +
+      '<button class="modal-close" onclick="window._closeSheet()" aria-label="Close">&#x2715;</button>' +
     '</div>' +
 
     '<div class="muscle-tabs" id="sheet-log-tabs">' +
       groups.map(g => {
-        const cnt = Object.keys(logState.exercises).filter(n =>
-          (EXERCISES[g] || []).find(e => e.name === n)
-        ).length;
+        const cnt = Object.keys(logState.exercises).filter(n => (EXERCISES[g] || []).find(e => e.name === n)).length;
         return '<button class="muscle-tab ' + (g === activeLogGroup ? "active" : "") +
           '" onclick="window._logTab(\'' + g + '\')">' + esc(g) +
           (cnt ? ' <span style="opacity:.7">(' + cnt + ')</span>' : '') + '</button>';
@@ -715,8 +744,8 @@ function renderSheetContent() {
       '<div class="section-title">Cardio</div>' +
       (bikeAdded
         ? '<div class="sheet-bike-row">' +
-            '<span class="sheet-bike-name">🚴 Bike</span>' +
-            '<input type="number" class="input-field cardio-input" id="log-cardio" min="0" placeholder="0" value="' + esc(String(logState.cardio || "")) + '" onchange="window._setCardio(this.value, false)">' +
+            '<span class="sheet-bike-name">Bike</span>' +
+            '<input type="number" class="input-field cardio-input" min="0" placeholder="0" value="' + esc(String(logState.cardio || "")) + '" onchange="window._setCardio(this.value, false)">' +
             '<span class="cardio-unit">min</span>' +
             '<button class="btn-sheet-remove" onclick="window._setCardio(\'\', true)">Remove</button>' +
           '</div>'
@@ -726,15 +755,15 @@ function renderSheetContent() {
   el.innerHTML =
     '<div class="sheet-scroll">' + scrollHTML + '</div>' +
     '<div class="sheet-footer">' +
-      '<button class="btn-primary save-btn" id="save-btn" onclick="window._saveWorkout()" style="width:100%;padding:15px">Save Workout</button>' +
+      '<button class="btn-primary save-btn" id="sheet-continue" onclick="window._sheetContinue()"' +
+        (hasWorkInProgress() ? '' : ' disabled') + '>' + sheetFooterLabel() + '</button>' +
     '</div>';
 }
 
 function renderSheetExList(group) {
   return (EXERCISES[group] || []).map(ex => {
     const sel = !!logState.exercises[ex.name];
-    const safeExId = safeId(ex.name);
-    return '<div class="sheet-ex-row ' + (sel ? "selected" : "") + '" id="sheetex_' + safeExId + '">' +
+    return '<div class="sheet-ex-row ' + (sel ? "selected" : "") + '">' +
       '<span class="sheet-ex-name">' + esc(ex.name) + '</span>' +
       '<button class="' + (sel ? "btn-sheet-remove" : "btn-sheet-add") + '" ' +
         'onclick="window._sheetToggleEx(\'' + ex.name + '\',\'' + group + '\')">' +
@@ -743,6 +772,13 @@ function renderSheetExList(group) {
     '</div>';
   }).join("");
 }
+
+window._logTab = function(group) {
+  activeLogGroup = group;
+  document.querySelectorAll("#sheet-log-tabs .muscle-tab").forEach(t =>
+    t.classList.toggle("active", t.textContent.trim().startsWith(group)));
+  document.getElementById("log-ex-list").innerHTML = renderSheetExList(group);
+};
 
 window._setCardio = function(val, rerender) {
   logState.cardio = val;
@@ -753,319 +789,267 @@ window._setCardio = function(val, rerender) {
 window._sheetToggleEx = function(exName, group) {
   if (logState.exercises[exName]) {
     delete logState.exercises[exName];
+    if (activeEx === exName) activeEx = null;
   } else {
-    logState.exercises[exName] = [{ weight: lastWeightFor(exName), reps: "", muscleGroup: group }];
+    logState.exercises[exName] = newExerciseSets(exName, group);
   }
   syncTimer();
-  // Refresh exercise list
   document.getElementById("log-ex-list").innerHTML = renderSheetExList(group);
-  // Update selected count label
-  const cnt = Object.keys(logState.exercises).length;
-  const countEl = document.getElementById("sheet-selected-count");
-  if (countEl) {
-    countEl.style.display = cnt > 0 ? "" : "none";
-    countEl.textContent = cnt + ' exercise' + (cnt !== 1 ? 's' : '') + ' selected';
-  }
-  // Update tab count badges
   const groups = Object.keys(EXERCISES);
   document.querySelectorAll("#sheet-log-tabs .muscle-tab").forEach((tab, i) => {
     const g = groups[i];
-    const groupCnt = Object.keys(logState.exercises).filter(n =>
-      (EXERCISES[g] || []).find(e => e.name === n)
-    ).length;
-    tab.innerHTML = esc(g) + (groupCnt ? ' <span style="opacity:.7">(' + groupCnt + ')</span>' : '');
+    const cnt = Object.keys(logState.exercises).filter(n => (EXERCISES[g] || []).find(e => e.name === n)).length;
+    tab.innerHTML = esc(g) + (cnt ? ' <span style="opacity:.7">(' + cnt + ')</span>' : '');
   });
+  const btn = document.getElementById("sheet-continue");
+  if (btn) { btn.textContent = sheetFooterLabel(); btn.disabled = !hasWorkInProgress(); }
 };
 
-// ── Log Workout ──────────────────────────────────────────────
+// ── Log (workout in progress) ────────────────────────────────
+let activeEx = null;          // exercise whose set table is open
+let finishArmedUntil = 0;     // Finish needs a second tap within 3s
+
+// Most recent earlier session of an exercise, for "Last time" and the Prev column
+function lastSessionOf(exName, beforeDate, excludeId) {
+  for (const w of allWorkouts) {
+    if (w.id === excludeId || w.date > beforeDate) continue;
+    const ex = (w.exercises || []).find(e => e.name === exName && e.sets?.length);
+    if (ex) return { date: w.date, ex };
+  }
+  return null;
+}
+
+function shortDate(d) {
+  const dt = dateFromStr(d);
+  const opts = { month: "short", day: "numeric" };
+  if (dt.getFullYear() !== new Date().getFullYear()) opts.year = "numeric";
+  return dt.toLocaleDateString("en-US", opts);
+}
+
+// "155 × 8, 7, 6, 3" when the weight is the same every set, otherwise "155×8, 160×6"
+function setsSummary(sets) {
+  const ss = sets.filter(s => (parseInt(s.reps) || 0) > 0);
+  if (!ss.length) return "—";
+  const ws = [...new Set(ss.map(s => parseFloat(s.weight) || 0))];
+  if (ws.length === 1) return (ws[0] ? ws[0] + " × " : "") + ss.map(s => parseInt(s.reps)).join(", ") + (ws[0] ? "" : " reps");
+  return ss.map(s => (parseFloat(s.weight) || 0) + "×" + parseInt(s.reps)).join(", ");
+}
+
+function setCounts(s) { return (parseInt(s.reps) || 0) > 0 || s.done; }
+
+function exerciseComplete(sets) { return sets.length > 0 && sets.every(s => s.done); }
+
+function logDisplayName() {
+  return workoutName({ exercises: Object.values(logState.exercises).map(sets => ({ muscleGroup: sets[0]?.muscleGroup })), cardio: logState.cardio });
+}
+
+function currentActiveEx() {
+  const names = Object.keys(logState.exercises);
+  if (activeEx && logState.exercises[activeEx]) return activeEx;
+  return names.find(n => !exerciseComplete(logState.exercises[n])) || names[0] || null;
+}
+
+function logStatsHTML() {
+  let done = 0, total = 0, vol = 0, prs = 0;
+  for (const [name, sets] of Object.entries(logState.exercises)) {
+    total += sets.length;
+    const doneSets = sets.filter(s => s.done);
+    done += doneSets.length;
+    vol += doneSets.reduce((t, s) => t + (parseFloat(s.weight) || 0) * (parseInt(s.reps) || 0), 0);
+    if (liftIsPR(name, doneSets)) prs++;
+  }
+  return '<div class="lstat"><div class="lstat-label">Sets</div><div class="lstat-value">' + done + '<span class="lstat-of">/' + total + '</span></div></div>' +
+    '<div class="lstat"><div class="lstat-label">Volume</div><div class="lstat-value">' + Math.round(vol).toLocaleString("en-US") + '</div></div>' +
+    '<div class="lstat"><div class="lstat-label">PRs</div><div class="lstat-value accent">' + prs + '</div></div>';
+}
+
+// True if these sets beat every earlier session of the exercise
+function liftIsPR(name, sets) {
+  const top = exTop({ name, sets });
+  if (!top) return false;
+  const earlier = allWorkouts
+    .filter(w => w.date <= logState.date)
+    .flatMap(w => (w.exercises || []).filter(e => e.name === name))
+    .map(exTop).filter(Boolean);
+  if (!earlier.length) return false;
+  const best = LOWER_IS_BETTER.has(name) ? Math.min(...earlier) : Math.max(...earlier);
+  return isBetter(name, top, best);
+}
+
 function renderLog() {
   const el = document.getElementById("view-log");
-  const groups = Object.keys(EXERCISES);
-  const selectedCount = Object.keys(logState.exercises).length;
-  const totalEx = groups.reduce((a, g) => a + EXERCISES[g].length, 0);
-  const progressPct = totalEx > 0 ? (selectedCount / totalEx) * 100 : 0;
+
+  if (!hasWorkInProgress()) {
+    el.innerHTML =
+      '<div class="log-empty">' +
+        '<div class="log-empty-title">No workout in progress</div>' +
+        '<div class="log-empty-sub">Pick your exercises and the clock starts on the first one.</div>' +
+        '<button class="btn-primary save-btn" onclick="window._openSheet()">Start workout</button>' +
+      '</div>';
+    return;
+  }
+
+  const names = Object.keys(logState.exercises);
+  const active = currentActiveEx();
 
   el.innerHTML =
-    '<div class="view-header" style="margin-bottom:8px">' +
-      '<div>' +
-        '<div class="view-eyebrow">Log Workout</div>' +
-        '<h2 class="view-title">Exercises</h2>' +
-      '</div>' +
-      '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">' +
+    '<header class="log-head">' +
+      '<div class="log-head-main">' +
+        '<div class="log-head-name">' + esc(logDisplayName()) + '</div>' +
         '<span class="timer-slot">' + timerChipHTML() + '</span>' +
-        '<span id="log-selected-count" style="font-size:13px;color:var(--accent);font-weight:600' + (selectedCount === 0 ? ';display:none' : '') + '">' + selectedCount + ' selected</span>' +
+        '<input type="date" class="log-date-input" id="log-date" value="' + esc(logState.date) + '" aria-label="Workout date">' +
       '</div>' +
+      '<button class="finish-btn" id="finish-top" onclick="window._finishWorkout(this)">Finish</button>' +
+    '</header>' +
+
+    '<section class="log-stats" id="log-stats">' + logStatsHTML() + '</section>' +
+
+    '<div class="log-exercises">' +
+      names.map(n => n === active ? activeCardHTML(n) : compactRowHTML(n)).join("") +
     '</div>' +
 
-    '<div class="log-date-row"><label class="input-label">Date</label>' +
-      '<input type="date" class="input-field" id="log-date" value="' + esc(logState.date) + '">' +
-    '</div>' +
-
-    '<div class="log-progress-bar-track"><div class="log-progress-bar-fill" style="width:' + progressPct.toFixed(1) + '%"></div></div>' +
-    '<div class="log-progress-label">' +
-      '<span>' + selectedCount + ' exercises selected</span>' +
-      '<span>' + (totalEx - selectedCount) + ' remaining</span>' +
-    '</div>' +
-
-    '<div class="muscle-tabs" id="log-tabs">' +
-      groups.map(g => {
-        const cnt = Object.keys(logState.exercises).filter(n =>
-          (EXERCISES[g] || []).find(e => e.name === n)
-        ).length;
-        return '<button class="muscle-tab ' + (g === activeLogGroup ? "active" : "") +
-          '" onclick="window._logTab(\'' + g + '\')">' + esc(g) +
-          (cnt ? ' <span style="opacity:.7">(' + cnt + ')</span>' : '') + '</button>';
-      }).join("") +
-    '</div>' +
-
-    '<div class="exercises-list" id="log-ex-list">' + renderExList(activeLogGroup) + '</div>' +
+    '<button class="add-ex-btn" onclick="window._openSheet()">+ Add exercise</button>' +
 
     '<div class="cardio-section"><div class="section-title">Cardio</div>' +
       '<div class="cardio-row">' +
-        '<span class="cardio-label">🚴 Bike</span>' +
+        '<span class="cardio-label">Bike</span>' +
         '<input type="number" class="input-field cardio-input" id="log-cardio" min="0" placeholder="0" value="' + esc(logState.cardio) + '">' +
         '<span class="cardio-unit">min</span>' +
       '</div></div>' +
 
-    '<div class="notes-section"><label class="input-label">Notes</label>' +
-      '<textarea class="input-field notes-input" id="log-notes" placeholder="How did it feel? Any PRs?"></textarea>' +
+    '<div class="notes-section"><label class="input-label" for="log-notes">Notes</label>' +
+      '<textarea class="input-field notes-input" id="log-notes" placeholder="How did it feel?"></textarea>' +
     '</div>' +
 
-    '<button class="btn-primary save-btn" id="save-btn" onclick="window._saveWorkout()">Save Workout</button>';
+    '<button class="btn-primary save-btn" onclick="window._finishWorkout(this)">Finish workout</button>';
 
   document.getElementById("log-notes").value = logState.notes;
-  document.getElementById("log-date").addEventListener("change", e => { logState.date = e.target.value; saveDraft(); });
+  document.getElementById("log-date").addEventListener("change", e => { logState.date = e.target.value || todayStr(); saveDraft(); });
   document.getElementById("log-cardio").addEventListener("change", e => { logState.cardio = e.target.value; syncTimer(); });
   document.getElementById("log-notes").addEventListener("change", e => { logState.notes = e.target.value; saveDraft(); });
 }
 
-function renderExList(group) {
-  return (EXERCISES[group] || []).map(ex => {
-    const sel  = !!logState.exercises[ex.name];
-    const sets = logState.exercises[ex.name] || [];
-    const setCount = sets.length;
-    let statusClass = "";
-    if (sel) statusClass = setCount >= 3 ? "done" : "in-progress";
+function activeCardHTML(name) {
+  const sets = logState.exercises[name];
+  const id = safeId(name);
+  const lib = Object.values(EXERCISES).flat().find(e => e.name === name);
+  const last = lastSessionOf(name, logState.date);
+  const nextIdx = sets.findIndex(s => !s.done);
 
-    // PR badge: check if current max beats all-time
-    const curMax = sel ? Math.max(...sets.map(s => parseFloat(s.weight) || 0)) : 0;
-    const histMax = maxWeightEver(ex.name);
-    const isNewPR = sel && curMax > histMax && curMax > 0;
-
-    const safeExId = safeId(ex.name);
-    return '<div class="exercise-row ' + (sel ? "selected" : "") + '" id="exrow_' + safeExId + '">' +
-      '<div class="exercise-row-header" onclick="window._toggleEx(\'' + ex.name + '\',\'' + group + '\')">' +
-        '<div class="ex-status-dot ' + statusClass + '"></div>' +
-        '<div class="exercise-check ' + (sel ? "checked" : "") + '">' +
-          (sel ? '<svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>' : '') +
-        '</div>' +
-        '<span class="exercise-name">' + esc(ex.name) + '</span>' +
-        (isNewPR ? '<span class="pr-badge new-pr">NEW PR!</span>' : '') +
-        (ex.cues?.length
-          ? '<button class="form-cues-btn" onclick="event.stopPropagation();window._toggleCues(\'' + safeExId + '\')" title="Form cues">Form</button>'
-          : '') +
-      '</div>' +
-      '<div class="form-cues-inline hidden" id="cues_' + safeExId + '">' +
-        (ex.cues || []).map(c =>
-          '<div class="form-cue-inline"><span class="cue-dot-sm"></span>' + esc(c) + '</div>'
-        ).join("") +
-      '</div>' +
-      (sel ? setLogger(ex.name, logState.exercises[ex.name]) : '') +
+  const rows = sets.map((s, i) => {
+    const prev = last?.ex.sets[i];
+    const prevText = prev ? (parseFloat(prev.weight) || 0) + " × " + (parseInt(prev.reps) || 0) : "—";
+    return '<div class="set-row2' + (s.done ? " done" : i === nextIdx ? " next" : "") + '">' +
+      '<span class="set-n">' + (i + 1) + '</span>' +
+      '<span class="set-prev">' + prevText + '</span>' +
+      '<input type="number" inputmode="decimal" class="set-in" aria-label="Weight, set ' + (i + 1) + '" placeholder="—" value="' + esc(s.weight) + '"' +
+        ' onchange="window._updSet(\'' + name + '\',' + i + ',\'weight\',this.value)">' +
+      '<input type="number" inputmode="numeric" class="set-in" aria-label="Reps, set ' + (i + 1) + '" placeholder="' + (prev ? parseInt(prev.reps) || "—" : "—") + '" value="' + esc(s.reps) + '"' +
+        ' onchange="window._updSet(\'' + name + '\',' + i + ',\'reps\',this.value)">' +
+      '<button class="set-check' + (s.done ? " on" : "") + '" aria-label="' + (s.done ? "Mark set " + (i + 1) + " not done" : "Complete set " + (i + 1)) + '"' +
+        ' onclick="window._toggleSetDone(\'' + name + '\',' + i + ')">' +
+        '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M5 12l5 5 9-10"/></svg>' +
+      '</button>' +
     '</div>';
   }).join("");
+
+  return '<section class="ex-card" id="exrow_' + id + '">' +
+    '<div class="ex-card-head">' +
+      '<div class="ex-card-title">' +
+        '<div class="ex-card-name">' + esc(name) + '<span class="pr-slot" id="pr_' + id + '">' + (liftIsPR(name, sets.filter(s => s.done)) ? '<span class="pr-badge new-pr">NEW PR</span>' : '') + '</span></div>' +
+        '<div class="ex-card-last">' + (last ? "Last time · " + shortDate(last.date) + " · " + setsSummary(last.ex.sets) : "First time logging this") + '</div>' +
+      '</div>' +
+      (lib?.cues?.length ? '<button class="form-cues-btn" onclick="window._toggleCues(\'' + id + '\')">Form</button>' : '') +
+    '</div>' +
+    '<div class="form-cues-inline hidden" id="cues_' + id + '">' +
+      (lib?.cues || []).map(c => '<div class="form-cue-inline"><span class="cue-dot-sm"></span>' + esc(c) + '</div>').join("") +
+    '</div>' +
+    '<div class="set-row2 head"><span>Set</span><span>Prev</span><span>Lbs</span><span>Reps</span><span></span></div>' +
+    rows +
+    '<div class="ex-card-actions">' +
+      '<button class="link-btn" onclick="window._addSet(\'' + name + '\')">+ Add set</button>' +
+      (sets.length > 1 ? '<button class="link-btn muted" onclick="window._rmSet(\'' + name + '\',' + (sets.length - 1) + ')">Remove last set</button>' : '') +
+      '<button class="link-btn muted" onclick="window._removeEx(\'' + name + '\')">Remove exercise</button>' +
+    '</div>' +
+    (nextIdx >= 0
+      ? '<button class="btn-primary log-set-btn" onclick="window._toggleSetDone(\'' + name + '\',' + nextIdx + ')">Log set ' + (nextIdx + 1) + '</button>'
+      : '') +
+  '</section>';
 }
 
-window._toggleCues = function(safeExName) {
-  const el = document.getElementById("cues_" + safeExName);
+function compactRowHTML(name) {
+  const sets = logState.exercises[name];
+  const complete = exerciseComplete(sets);
+  const doneCount = sets.filter(s => s.done).length;
+  const last = lastSessionOf(name, logState.date);
+  const meta = complete
+    ? setsSummary(sets)
+    : last ? "Last time · " + setsSummary(last.ex.sets) : "First time logging this";
+  return '<button class="ex-compact' + (complete ? " complete" : "") + '" onclick="window._setActiveEx(\'' + name + '\')">' +
+    '<span class="ex-compact-dot">' + (complete ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M5 12l5 5 9-10"/></svg>' : '') + '</span>' +
+    '<span class="ex-compact-main"><span class="ex-compact-name">' + esc(name) + '</span><span class="ex-compact-meta">' + esc(meta) + '</span></span>' +
+    '<span class="ex-compact-count">' + doneCount + '/' + sets.length + '</span>' +
+  '</button>';
+}
+
+window._toggleCues = function(id) {
+  const el = document.getElementById("cues_" + id);
   if (el) el.classList.toggle("hidden");
 };
 
-function exHistoryHTML(exName) {
-  const history = allWorkouts
-    .filter(w => w.date !== logState.date && w.exercises?.some(e => e.name === exName))
-    .slice(0, 5);
-  if (!history.length) return '';
-  const rows = history.map(w => {
-    const ex = w.exercises.find(e => e.name === exName);
-    const sets = ex?.sets || [];
-    if (!sets.length) return '';
-    const d = new Date(w.date + 'T12:00:00');
-    const dateStr = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-    const repsArr = sets.map(s => parseInt(s.reps) || 0).filter(r => r > 0);
-    const avgReps = repsArr.length ? Math.round(repsArr.reduce((a, b) => a + b, 0) / repsArr.length) : 0;
-    const maxW = Math.max(...sets.map(s => parseFloat(s.weight) || 0));
-    let summary = sets.length + '×' + avgReps;
-    if (maxW > 0) summary += ' @ ' + maxW + ' lbs';
-    return '<div class="ex-history-row">' +
-      '<span class="ex-history-date">' + esc(dateStr) + '</span>' +
-      '<span class="ex-history-summary">' + esc(summary) + '</span>' +
-    '</div>';
-  }).join('');
-  return '<div class="ex-history">' +
-    '<div class="ex-history-label">Recent</div>' +
-    rows +
-  '</div>';
-}
-
-function setLogger(exName, sets) {
-  const rows = sets.map((s, i) =>
-    '<div class="set-row">' +
-      '<span class="set-num">' + (i + 1) + '</span>' +
-      '<input type="number" class="set-input" placeholder="—" value="' + esc(s.weight) + '"' +
-        ' onchange="window._updSet(\'' + exName + '\',' + i + ',\'weight\',this.value)">' +
-      '<input type="number" class="set-input" placeholder="—" value="' + esc(s.reps) + '"' +
-        ' onchange="window._updSet(\'' + exName + '\',' + i + ',\'reps\',this.value)">' +
-      '<button class="set-remove" onclick="window._rmSet(\'' + exName + '\',' + i + ')"' +
-        (sets.length === 1 ? ' disabled' : '') + '>&#x2715;</button>' +
-    '</div>'
-  ).join("");
-  return '<div class="set-logger" id="sl_' + safeId(exName) + '">' +
-    '<div class="set-header-row">' +
-      '<span class="set-col-label">#</span>' +
-      '<span class="set-col-label">Weight</span>' +
-      '<span class="set-col-label">Reps</span>' +
-      '<span class="set-col-label"></span>' +
-    '</div>' +
-    rows +
-    '<button class="add-set-btn" onclick="window._addSet(\'' + exName + '\')">+ Add Set</button>' +
-    exHistoryHTML(exName) +
-  '</div>';
-}
-
-function reRenderSetLogger(exName) {
-  const sl = document.getElementById("sl_" + safeId(exName));
-  if (sl) {
-    const tmp = document.createElement("div");
-    tmp.innerHTML = setLogger(exName, logState.exercises[exName]);
-    sl.replaceWith(tmp.firstElementChild);
-  } else {
-    const row = document.getElementById("exrow_" + safeId(exName));
-    const tmp = document.createElement("div");
-    tmp.innerHTML = setLogger(exName, logState.exercises[exName]);
-    row.appendChild(tmp.firstElementChild);
-  }
-}
-
-function refreshExRow(exName, group) {
-  const safeExId = safeId(exName);
-  const sel  = !!logState.exercises[exName];
-  const sets = logState.exercises[exName] || [];
-  const setCount = sets.length;
-  let statusClass = "";
-  if (sel) statusClass = setCount >= 3 ? "done" : "in-progress";
-  const curMax = sel ? Math.max(...sets.map(s => parseFloat(s.weight) || 0)) : 0;
-  const histMax = maxWeightEver(exName);
-  const isNewPR = sel && curMax > histMax && curMax > 0;
-  const ex = Object.values(EXERCISES).flat().find(e => e.name === exName);
-
-  const row = document.getElementById("exrow_" + safeExId);
-  if (!row) return;
-  row.className = "exercise-row " + (sel ? "selected" : "");
-
-  const header = '<div class="exercise-row-header" onclick="window._toggleEx(\'' + exName + '\',\'' + group + '\')">' +
-    '<div class="ex-status-dot ' + statusClass + '"></div>' +
-    '<div class="exercise-check ' + (sel ? "checked" : "") + '">' +
-      (sel ? '<svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>' : '') +
-    '</div>' +
-    '<span class="exercise-name">' + esc(exName) + '</span>' +
-    (isNewPR ? '<span class="pr-badge new-pr">NEW PR!</span>' : '') +
-    (ex?.cues?.length
-      ? '<button class="form-cues-btn" onclick="event.stopPropagation();window._toggleCues(\'' + safeExId + '\')" title="Form cues">Form</button>'
-      : '') +
-  '</div>';
-
-  const cues = '<div class="form-cues-inline hidden" id="cues_' + safeExId + '">' +
-    (ex?.cues || []).map(c =>
-      '<div class="form-cue-inline"><span class="cue-dot-sm"></span>' + esc(c) + '</div>'
-    ).join("") +
-  '</div>';
-
-  const tmp = document.createElement("div");
-  tmp.innerHTML = header + cues + (sel ? setLogger(exName, logState.exercises[exName]) : "");
-  row.replaceChildren(...tmp.childNodes);
-}
-
-function lastWeightFor(exName) {
-  for (const w of allWorkouts) {
-    const ex = (w.exercises || []).find(e => e.name === exName);
-    if (ex?.sets?.length) return String(ex.sets[ex.sets.length - 1].weight || "");
-  }
-  return "";
-}
-
-window._logTab = function(group) {
-  activeLogGroup = group;
-  const tabsId = sheetOpen ? "#sheet-log-tabs" : "#log-tabs";
-  document.querySelectorAll(tabsId + " .muscle-tab").forEach(t => t.classList.remove("active"));
-  document.querySelectorAll(tabsId + " .muscle-tab").forEach(t => {
-    if (t.textContent.trim().startsWith(group)) t.classList.add("active");
-  });
-  document.getElementById("log-ex-list").innerHTML = sheetOpen
-    ? renderSheetExList(group)
-    : renderExList(group);
+window._setActiveEx = function(name) {
+  activeEx = name;
+  renderLog();
 };
 
-window._toggleEx = function(exName, group) {
-  if (logState.exercises[exName]) {
-    delete logState.exercises[exName];
-  } else {
-    logState.exercises[exName] = [{ weight: lastWeightFor(exName), reps: "", muscleGroup: group }];
-  }
-  syncTimer();
-  refreshExRow(exName, group);
-  // Update tab count badges and header selected count (same pattern used in _sheetToggleEx)
-  const groups = Object.keys(EXERCISES);
-  document.querySelectorAll("#log-tabs .muscle-tab").forEach((tab, i) => {
-    const g = groups[i];
-    const groupCnt = Object.keys(logState.exercises).filter(n =>
-      (EXERCISES[g] || []).find(e => e.name === n)
-    ).length;
-    tab.innerHTML = esc(g) + (groupCnt ? ' <span style="opacity:.7">(' + groupCnt + ')</span>' : '');
-  });
-  const cnt = Object.keys(logState.exercises).length;
-  const countEl = document.getElementById("log-selected-count");
-  if (countEl) {
-    countEl.style.display = cnt > 0 ? "" : "none";
-    countEl.textContent = cnt + ' selected';
-  }
-};
+// Start with as many sets as last time, at last time's weights; reps are left to fill in
+function newExerciseSets(exName, group) {
+  const last = lastSessionOf(exName, logState.date);
+  if (!last) return [{ weight: "", reps: "", muscleGroup: group, done: false }];
+  return last.ex.sets.map(s => ({ weight: String(s.weight ?? ""), reps: "", muscleGroup: group, done: false }));
+}
 
+// Typing doesn't re-render (that would steal focus); only the stats strip and PR badge refresh
 window._updSet = function(exName, i, field, val) {
-  if (logState.exercises[exName]) {
-    logState.exercises[exName][i][field] = val;
-    saveDraft();
-    // Refresh PR badge when weight changes
-    if (field === "weight") {
-      const safeExId = safeId(exName);
-      const sets = logState.exercises[exName];
-      const curMax = Math.max(...sets.map(s => parseFloat(s.weight) || 0));
-      const histMax = maxWeightEver(exName);
-      const isNewPR = curMax > histMax && curMax > 0;
-      const row = document.getElementById("exrow_" + safeExId);
-      if (row) {
-        const existing = row.querySelector(".pr-badge");
-        if (isNewPR && !existing) {
-          const badge = document.createElement("span");
-          badge.className = "pr-badge new-pr";
-          badge.textContent = "NEW PR!";
-          const header = row.querySelector(".exercise-row-header");
-          const formBtn = header?.querySelector(".form-cues-btn");
-          if (formBtn) header.insertBefore(badge, formBtn);
-          else if (header) header.appendChild(badge);
-        } else if (!isNewPR && existing) {
-          existing.remove();
-        }
-      }
-    }
+  const sets = logState.exercises[exName];
+  if (!sets?.[i]) return;
+  sets[i][field] = val;
+  saveDraft();
+  const stats = document.getElementById("log-stats");
+  if (stats) stats.innerHTML = logStatsHTML();
+  const pr = document.getElementById("pr_" + safeId(exName));
+  if (pr) pr.innerHTML = liftIsPR(exName, sets.filter(s => s.done)) ? '<span class="pr-badge new-pr">NEW PR</span>' : '';
+};
+
+// Marks a set done (filling reps from last time if left blank) or un-marks it.
+// When the exercise is finished, the next unfinished one opens.
+window._toggleSetDone = function(exName, i) {
+  const sets = logState.exercises[exName];
+  if (!sets?.[i]) return;
+  const s = sets[i];
+  if (!s.done && !(parseInt(s.reps) > 0)) {
+    const prev = lastSessionOf(exName, logState.date)?.ex.sets[i] || sets[i - 1];
+    if (!(parseInt(prev?.reps) > 0)) { toast("Enter reps for set " + (i + 1) + " first"); return; }
+    s.reps = String(parseInt(prev.reps));
   }
+  s.done = !s.done;
+  if (s.done && exerciseComplete(sets)) {
+    const next = Object.keys(logState.exercises).find(n => n !== exName && !exerciseComplete(logState.exercises[n]));
+    activeEx = next || exName;
+  } else {
+    activeEx = exName;
+  }
+  saveDraft();
+  renderLog();
 };
 
 window._addSet = function(exName) {
   const sets = logState.exercises[exName];
   const prev = sets[sets.length - 1];
-  sets.push({ weight: prev.weight, reps: prev.reps, muscleGroup: prev.muscleGroup });
+  sets.push({ weight: prev.weight, reps: "", muscleGroup: prev.muscleGroup, done: false });
+  activeEx = exName;
   saveDraft();
-  reRenderSetLogger(exName);
+  renderLog();
 };
 
 window._rmSet = function(exName, i) {
@@ -1073,36 +1057,57 @@ window._rmSet = function(exName, i) {
   if (sets.length <= 1) return;
   sets.splice(i, 1);
   saveDraft();
-  reRenderSetLogger(exName);
+  renderLog();
 };
 
-window._saveWorkout = async function() {
+window._removeEx = function(exName) {
+  delete logState.exercises[exName];
+  if (activeEx === exName) activeEx = null;
+  syncTimer();
+  renderLog();
+};
+
+// ── Finish & save ────────────────────────────────────────────
+window._finishWorkout = async function(btn) {
+  // Two taps to finish, so a stray tap mid-workout can't end it
+  if (Date.now() > finishArmedUntil) {
+    finishArmedUntil = Date.now() + 3000;
+    const label = btn.textContent;
+    btn.textContent = "Tap again to finish";
+    btn.classList.add("armed");
+    setTimeout(() => { if (btn.isConnected) { btn.textContent = label; btn.classList.remove("armed"); } }, 3000);
+    return;
+  }
+  finishArmedUntil = 0;
+
+  // A set counts if it was ticked or has reps entered
   const exercises = Object.entries(logState.exercises).map(([name, sets]) => {
     const libEx = Object.values(EXERCISES).flat().find(e => e.name === name);
     return {
       name,
       muscleGroup: sets[0]?.muscleGroup || "",
       weighted: libEx ? libEx.weighted : true,
-      sets: sets.map(s => ({ weight: parseFloat(s.weight) || 0, reps: parseInt(s.reps) || 0 }))
+      sets: sets.filter(setCounts).map(s => ({ weight: parseFloat(s.weight) || 0, reps: parseInt(s.reps) || 0 }))
     };
-  });
+  }).filter(e => e.sets.length);
 
   if (exercises.length === 0 && !logState.cardio) {
-    toast("Select at least one exercise or add cardio first");
+    toast("Log at least one set first");
+    btn.textContent = "Finish";
+    btn.classList.remove("armed");
     return;
   }
 
-  const btn = document.getElementById("save-btn");
-  if (btn) { btn.textContent = "Saving…"; btn.disabled = true; }
+  btn.textContent = "Saving…";
+  btn.disabled = true;
 
   // Only timed if logged for today; back-dated entries have no meaningful clock
   const startedAt = timerStartedAt();
-  const durationMin = startedAt && logState.date === todayStr()
-    ? Math.max(1, Math.round((Date.now() - startedAt) / 60000))
-    : null;
+  const elapsedMs = startedAt && logState.date === todayStr() ? Date.now() - startedAt : null;
+  const durationMin = elapsedMs !== null ? Math.max(1, Math.round(elapsedMs / 60000)) : null;
 
   try {
-    await saveWorkoutDoc({
+    const saved = await saveWorkoutDoc({
       date: logState.date,
       exercises,
       cardio: logState.cardio ? parseInt(logState.cardio) : null,
@@ -1110,16 +1115,154 @@ window._saveWorkout = async function() {
       durationMin
     });
     logState = { date: todayStr(), exercises: {}, cardio: "", notes: "" };
+    activeEx = null;
     clearTimer();
     localStorage.removeItem(DRAFT_KEY);
-    toast("Workout saved!");
-    if (sheetOpen) window._closeSheet();
-    showView("dashboard");
+    showSummary(saved, elapsedMs);
   } catch (e) {
     console.error(e);
     toast("Error saving — please try again");
-    if (btn) { btn.textContent = "Save Workout"; btn.disabled = false; }
+    btn.textContent = "Finish";
+    btn.disabled = false;
   }
+};
+
+// ── Workout summary ──────────────────────────────────────────
+let summaryWorkout = null;
+
+function exVolume(ex) {
+  return (ex.sets || []).reduce((t, s) => t + (parseFloat(s.weight) || 0) * (parseInt(s.reps) || 0), 0);
+}
+function exReps(ex) {
+  return (ex.sets || []).reduce((t, s) => t + (parseInt(s.reps) || 0), 0);
+}
+
+// Consecutive Sunday–Saturday weeks with at least one workout, counting back from this week
+function weekStreak() {
+  const weekOf = ds => { const d = dateFromStr(ds); d.setDate(d.getDate() - d.getDay()); return isoDate(d); };
+  const weeks = new Set(allWorkouts.map(w => weekOf(w.date)));
+  const cur = dateFromStr(weekOf(todayStr()));
+  let n = 0;
+  while (weeks.has(isoDate(cur))) { n++; cur.setDate(cur.getDate() - 7); }
+  return n;
+}
+
+function showSummary(w, elapsedMs) {
+  summaryWorkout = w;
+  const el = document.getElementById("summary-screen");
+  const statue = statueOfDay();
+  const quote = closingQuote();
+
+  const rows = w.exercises.map(ex => {
+    const prev = lastSessionOf(ex.name, w.date, w.id);
+    const vol = exVolume(ex), prevVol = prev ? exVolume(prev.ex) : null;
+    return { ex, vol, prevVol, reps: exReps(ex), prevReps: prev ? exReps(prev.ex) : null };
+  });
+  const compared = rows.filter(r => r.prevVol !== null);
+  const vol = rows.reduce((t, r) => t + r.vol, 0);
+  const sets = w.exercises.reduce((t, e) => t + e.sets.length, 0);
+  const reps = rows.reduce((t, r) => t + r.reps, 0);
+  const cmpVol = compared.reduce((t, r) => t + r.vol, 0), cmpPrevVol = compared.reduce((t, r) => t + r.prevVol, 0);
+  const cmpReps = compared.reduce((t, r) => t + r.reps, 0), cmpPrevReps = compared.reduce((t, r) => t + r.prevReps, 0);
+  const volPct = cmpPrevVol ? Math.round((cmpVol - cmpPrevVol) / cmpPrevVol * 100) : null;
+  const repDelta = compared.length ? cmpReps - cmpPrevReps : null;
+  const beat = compared.filter(r => r.vol > r.prevVol).length;
+  const prs = workoutPRs(w);
+
+  const time = elapsedMs !== null ? formatElapsed(elapsedMs) : w.durationMin ? w.durationMin + "" : "—";
+  const delta = (n, suffix) => n === null ? "" :
+    '<div class="sum-delta ' + (n >= 0 ? "up" : "down") + '">' + (n >= 0 ? "▲ " : "▼ ") + Math.abs(n) + suffix + '</div>';
+
+  const maxVol = Math.max(1, ...rows.map(r => Math.max(r.vol, r.prevVol || 0)));
+  const exRows = rows.map((r, i) =>
+    '<div class="sum-ex' + (i >= 3 ? " extra" : "") + '">' +
+      '<div class="sum-ex-text"><span class="sum-ex-name">' + esc(r.ex.name) + '</span> <span class="sum-ex-sets">' + esc(setsSummary(r.ex.sets)) + '</span></div>' +
+      '<div class="sum-ex-bars">' +
+        '<div class="sum-bar today" style="width:' + (r.vol / maxVol * 100).toFixed(1) + '%"></div>' +
+        (r.prevVol !== null ? '<div class="sum-bar last" style="width:' + (r.prevVol / maxVol * 100).toFixed(1) + '%"></div>' : '') +
+      '</div>' +
+      '<div class="sum-ex-delta ' + (r.prevVol === null ? "" : r.vol >= r.prevVol ? "up" : "down") + '">' +
+        (r.prevVol === null ? "new" : (r.vol >= r.prevVol ? "+" : "−") + Math.abs(Math.round(r.vol - r.prevVol)).toLocaleString("en-US") + " lbs") +
+      '</div>' +
+    '</div>').join("");
+
+  const callout = prs.length
+    ? "New PR · " + prs.map(esc).join(", ")
+    : compared.length ? "Beat it on " + beat + " of " + compared.length : "";
+
+  const week = durationWeek();
+  const weekMin = week.reduce((t, d) => t + d.min, 0);
+  const weekSessions = (() => {
+    const sun = dateFromStr(todayStr()); sun.setDate(sun.getDate() - sun.getDay());
+    return allWorkouts.filter(x => x.date >= isoDate(sun) && x.date <= todayStr()).length;
+  })();
+
+  el.innerHTML =
+    '<img class="sum-img" src="' + statue.src + '" alt="" style="transform:translateY(' + statue.shift + '%)">' +
+    '<div class="sum-scrim"></div>' +
+    '<blockquote class="sum-quote">' +
+      '<p>“' + esc(quote.text) + '”</p>' +
+      '<footer>' + esc(quote.author) + '</footer>' +
+    '</blockquote>' +
+    '<div class="sum-body">' +
+      '<header class="sum-head">' +
+        '<div><div class="sum-eyebrow">✓ Workout complete</div><div class="sum-name">' + esc(workoutName(w)) + '</div></div>' +
+        '<div class="sum-date">' + dateFromStr(w.date).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" }) + '</div>' +
+      '</header>' +
+      '<section class="sum-stats">' +
+        '<div class="sstat"><div class="sstat-label">Time</div><div class="sstat-value">' + time + '</div><div class="sstat-sub">' + (elapsedMs !== null || w.durationMin ? "min" : "not timed") + '</div></div>' +
+        '<div class="sstat"><div class="sstat-label">Volume</div><div class="sstat-value">' + Math.round(vol).toLocaleString("en-US") + '</div>' + (volPct !== null ? delta(volPct, "%") : '<div class="sstat-sub">lbs</div>') + '</div>' +
+        '<div class="sstat"><div class="sstat-label">Sets</div><div class="sstat-value">' + sets + '</div><div class="sstat-sub">' + w.exercises.length + (w.exercises.length === 1 ? " exercise" : " exercises") + '</div></div>' +
+        '<div class="sstat"><div class="sstat-label">Reps</div><div class="sstat-value">' + reps + '</div>' + (repDelta !== null ? delta(repDelta, "") : '<div class="sstat-sub">total</div>') + '</div>' +
+      '</section>' +
+      (rows.length
+        ? '<section class="sum-exs">' +
+            '<div class="sum-exs-head"><span>vs last time</span><span class="sum-callout">' + callout + '</span></div>' +
+            exRows +
+            (rows.length > 3 ? '<button class="link-btn sum-see-all" onclick="this.parentElement.classList.add(\'show-all\');this.remove()">See all ' + rows.length + '</button>' : '') +
+          '</section>'
+        : '') +
+      '<div class="sum-week"><span class="sum-week-label">This week</span>' +
+        '<span><b>' + weekMin + '</b> min · <b>' + weekSessions + '</b> ' + (weekSessions === 1 ? "session" : "sessions") + ' · streak <b class="accent">' + weekStreak() + '</b> wk</span></div>' +
+      '<div class="sum-note hidden" id="sum-note">' +
+        '<textarea class="input-field notes-input" id="sum-note-text" placeholder="How did it feel?">' + esc(w.notes || "") + '</textarea>' +
+        '<button class="btn-secondary" onclick="window._saveSummaryNote(this)">Save note</button>' +
+      '</div>' +
+      '<div class="sum-actions">' +
+        '<button class="sum-note-btn" onclick="document.getElementById(\'sum-note\').classList.toggle(\'hidden\')">' + (w.notes ? "Edit note" : "Add note") + '</button>' +
+        '<button class="sum-done" onclick="window._closeSummary()">Done</button>' +
+      '</div>' +
+    '</div>';
+
+  el.classList.remove("hidden", "leaving");
+  document.body.classList.add("no-scroll");
+}
+
+window._saveSummaryNote = async function(btn) {
+  const text = document.getElementById("sum-note-text").value;
+  btn.disabled = true;
+  try {
+    await updateDoc(doc(db, "workouts", summaryWorkout.id), { notes: text });
+    summaryWorkout.notes = text;
+    toast("Note saved");
+    document.getElementById("sum-note").classList.add("hidden");
+  } catch (e) {
+    console.error(e);
+    toast("Couldn't save note — try again");
+  }
+  btn.disabled = false;
+};
+
+window._closeSummary = function() {
+  const el = document.getElementById("summary-screen");
+  showView("dashboard");
+  el.classList.add("leaving");
+  setTimeout(() => {
+    el.classList.add("hidden");
+    el.classList.remove("leaving");
+    el.innerHTML = "";
+    document.body.classList.remove("no-scroll");
+  }, 500);
 };
 
 // ── Progress ─────────────────────────────────────────────────
