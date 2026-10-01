@@ -755,7 +755,9 @@ let customFormOpen = false;
 async function loadCustomExercises() {
   try {
     const snap = await getDoc(doc(db, "users", currentUser.uid));
-    customExercises = snap.data()?.customExercises || [];
+    // Skip anything that isn't already a clean name (e.g. written by an older version or by hand)
+    customExercises = (snap.data()?.customExercises || [])
+      .filter(c => typeof c?.name === "string" && c.name && cleanExerciseName(c.name) === c.name);
   } catch (e) {
     console.error(e);
     customExercises = [];
@@ -768,10 +770,11 @@ function addToLibrary(c) {
   if (!list.some(e => e.name === c.name)) list.push({ name: c.name, weighted: c.weighted !== false, cues: [], custom: true });
 }
 
-// Names end up inside onclick="…('name')" strings, so straight quotes and markup characters are
-// swapped out (a typed apostrophe becomes a curly one)
+// Names end up inside onclick="…('name')" strings. The browser decodes HTML entities such as
+// &#39; in attributes before running them, so & is removed along with quotes, backslashes and
+// angle brackets (a typed apostrophe becomes a curly one, "&" becomes "and").
 function cleanExerciseName(raw) {
-  return raw.replace(/'/g, "’").replace(/["\\<>]/g, "").replace(/\s+/g, " ").trim();
+  return raw.replace(/'/g, "’").replace(/&/g, " and ").replace(/["\\<>]/g, "").replace(/\s+/g, " ").trim();
 }
 
 function customFormHTML() {
