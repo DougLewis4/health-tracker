@@ -588,6 +588,17 @@ function recoveryTileHTML() {
     '<div class="tstat-unit">Whoop</div></div>';
 }
 
+let todayLiftNames = [];
+
+// Lift cards on Today open Progress with that lift selected
+window._openLiftProgress = function(i) {
+  const name = todayLiftNames[i];
+  if (!name) return;
+  localStorage.setItem("progress_ex", name);
+  showView("progress");
+  window.scrollTo(0, 0);
+};
+
 function renderDashboard() {
   const el = document.getElementById("view-dashboard");
   const today = todayStr();
@@ -642,18 +653,19 @@ function renderDashboard() {
   // Most-logged lifts
   const counts = {};
   allWorkouts.forEach(w => (w.exercises || []).forEach(e => { if (exTop(e)) counts[e.name] = (counts[e.name] || 0) + 1; }));
-  const topLifts = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([name]) => {
+  todayLiftNames = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([name]) => name);
+  const topLifts = todayLiftNames.map((name, i) => {
     const history = [...allWorkouts].reverse()
       .flatMap(w => (w.exercises || []).filter(e => e.name === name))
       .map(exTop).filter(Boolean);
     const recent = history.slice(-8);
     const best = LOWER_IS_BETTER.has(name) ? Math.min(...history) : Math.max(...history);
-    return '<div class="lift-tile">' +
-      '<div class="lift-name">' + esc(name) + '</div>' +
-      '<div class="lift-top">' + recent[recent.length - 1] + '</div>' +
+    return '<button class="lift-tile" onclick="window._openLiftProgress(' + i + ')" aria-label="' + esc(name) + ' progress">' +
+      '<span class="lift-name">' + esc(name) + '</span>' +
+      '<span class="lift-top">' + recent[recent.length - 1] + '</span>' +
       sparkline(recent, 90, 24) +
-      '<div class="lift-best">best ' + best + '</div>' +
-    '</div>';
+      '<span class="lift-best">best ' + best + '</span>' +
+    '</button>';
   }).join("");
 
   const inProgress = !!timerStartedAt();
