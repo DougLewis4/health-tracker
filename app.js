@@ -588,6 +588,41 @@ function recoveryTileHTML() {
     '<div class="tstat-unit">Whoop</div></div>';
 }
 
+// Every set of a workout, grouped by exercise, for the expandable Recent rows
+function workoutDetailHTML(w, prs) {
+  const exHTML = (w.exercises || []).map(ex => {
+    const byReps = !exTop(ex);
+    const rows = (ex.sets || []).map((set, i) => {
+      const wt = parseFloat(set.weight) || 0, reps = parseInt(set.reps) || 0;
+      return '<div class="detail-set">' +
+        '<span class="detail-n">' + (i + 1) + '</span>' +
+        '<span class="detail-wt">' + (byReps ? "" : wt + ' <small>lbs</small>') + '</span>' +
+        '<span class="detail-x">' + (byReps ? "" : "×") + '</span>' +
+        '<span class="detail-reps">' + reps + ' <small>reps</small></span>' +
+      '</div>';
+    }).join("");
+    const vol = exVolume(ex);
+    return '<div class="detail-ex">' +
+      '<div class="detail-ex-head">' +
+        '<span class="detail-ex-name">' + esc(ex.name) + (prs.includes(ex.name) ? ' <span class="pr-badge new-pr">PR</span>' : '') + '</span>' +
+        '<span class="detail-ex-vol">' + (vol ? Math.round(vol).toLocaleString("en-US") + " lbs" : (ex.sets || []).length + " sets") + '</span>' +
+      '</div>' + rows +
+    '</div>';
+  }).join("");
+  const extras = [];
+  if (w.cardio) extras.push('<div class="detail-extra"><span>Bike</span><span>' + parseInt(w.cardio) + ' min</span></div>');
+  if (w.durationMin) extras.push('<div class="detail-extra"><span>Workout time</span><span>' + w.durationMin + ' min</span></div>');
+  if (w.notes) extras.push('<div class="detail-notes">“' + esc(w.notes) + '”</div>');
+  return exHTML + extras.join("");
+}
+
+window._toggleRecent = function(btn) {
+  const open = btn.getAttribute("aria-expanded") !== "true";
+  btn.setAttribute("aria-expanded", String(open));
+  btn.parentElement.classList.toggle("open", open);
+  document.getElementById(btn.getAttribute("aria-controls")).hidden = !open;
+};
+
 let todayLiftNames = [];
 
 // Lift cards on Today open Progress with that lift selected
@@ -623,8 +658,8 @@ function renderDashboard() {
     '</div>';
   }).join("");
 
-  // Recent workouts
-  const recentHTML = allWorkouts.slice(0, 3).map(w => {
+  // Recent workouts: each row expands to show every set
+  const recentHTML = allWorkouts.slice(0, 3).map((w, i) => {
     const d = dateFromStr(w.date);
     const exCount = (w.exercises || []).length;
     const setCount = (w.exercises || []).reduce((t, e) => t + (e.sets || []).length, 0);
@@ -634,19 +669,24 @@ function renderDashboard() {
     else if (w.cardio) meta.push("bike " + parseInt(w.cardio) + "m");
     const prs = workoutPRs(w);
     const tag = prs.length === 1 ? "PR · " + esc(prs[0]) : prs.length > 1 ? prs.length + " PRs" : "lbs";
-    return '<div class="recent-row">' +
-      '<div class="recent-date">' +
-        '<div class="recent-mon">' + d.toLocaleDateString("en-US", { month: "short" }).toUpperCase() + '</div>' +
-        '<div class="recent-day">' + d.getDate() + '</div>' +
-      '</div>' +
-      '<div class="recent-main">' +
-        '<div class="recent-name">' + esc(workoutName(w)) + '</div>' +
-        '<div class="recent-meta">' + meta.join(" · ") + '</div>' +
-      '</div>' +
-      '<div class="recent-side">' +
-        '<div class="recent-vol">' + Math.round(workoutVolume(w)).toLocaleString("en-US") + '</div>' +
-        '<div class="recent-tag' + (prs.length ? " pr" : "") + '">' + tag + '</div>' +
-      '</div>' +
+    const detailId = "recent-detail-" + i;
+    return '<div class="recent-item">' +
+      '<button class="recent-row" aria-expanded="false" aria-controls="' + detailId + '" onclick="window._toggleRecent(this)">' +
+        '<span class="recent-date">' +
+          '<span class="recent-mon">' + d.toLocaleDateString("en-US", { month: "short" }).toUpperCase() + '</span>' +
+          '<span class="recent-day">' + d.getDate() + '</span>' +
+        '</span>' +
+        '<span class="recent-main">' +
+          '<span class="recent-name">' + esc(workoutName(w)) + '</span>' +
+          '<span class="recent-meta">' + meta.join(" · ") + '</span>' +
+        '</span>' +
+        '<span class="recent-side">' +
+          '<span class="recent-vol">' + Math.round(workoutVolume(w)).toLocaleString("en-US") + '</span>' +
+          '<span class="recent-tag' + (prs.length ? " pr" : "") + '">' + tag + '</span>' +
+        '</span>' +
+        '<svg class="recent-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>' +
+      '</button>' +
+      '<div class="recent-detail" id="' + detailId + '" hidden>' + workoutDetailHTML(w, prs) + '</div>' +
     '</div>';
   }).join("");
 
