@@ -658,6 +658,36 @@ a:hover { text-decoration: underline; }
   border: 1px dashed var(--border-light); color: var(--text-secondary); font-size: 14px; font-weight: 500;
 }
 
+/* ── Offline banner ────────────────────────────────────────── */
+.offline-banner {
+  position: fixed; top: var(--header-h); left: 0; right: 0; z-index: 95;
+  padding: 6px 16px; text-align: center; font-size: 12px; font-weight: 500;
+  background: #3A2A1C; color: #F0C9A6; border-bottom: 1px solid rgba(224, 138, 69, 0.35);
+}
+.offline-banner[hidden] { display: none; }
+
+/* ── Custom exercises (picker sheet) ───────────────────────── */
+.cx-tag {
+  font-size: 10px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--text-muted); border: 1px solid var(--border-light); border-radius: 5px; padding: 1px 5px; margin-left: 6px;
+}
+.cx-remove { width: 32px; height: 32px; border-radius: 16px; color: var(--text-muted); font-size: 13px; flex-shrink: 0; }
+.cx-remove:hover { color: var(--danger); }
+.cx-form {
+  background: var(--bg-card); border: 1px solid var(--border-light); border-radius: 12px;
+  padding: 14px; margin-bottom: 16px; display: flex; flex-direction: column;
+}
+.cx-form .input-label { margin-top: 8px; }
+.cx-form .input-field { font-size: 16px; }
+.cx-select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238B8F96' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 12px center; padding-right: 36px;
+}
+.cx-check { display: flex; align-items: center; gap: 10px; margin-top: 14px; font-size: 14px; color: var(--text-primary); }
+.cx-check input { width: 20px; height: 20px; accent-color: var(--accent); }
+.cx-hint { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
+.cx-actions { display: flex; gap: 8px; justify-content: flex-end; }
+
 /* ── Header account button ─────────────────────────────────── */
 .header-right { display: flex; align-items: center; gap: 6px; }
 .account-btn {

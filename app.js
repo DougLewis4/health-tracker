@@ -1,6 +1,7 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.12.1/firebase-app.js";
-import { getFirestore, collection, addDoc, getDocs, getDoc, setDoc, deleteDoc, query, orderBy, limit,
-  serverTimestamp, doc, updateDoc, writeBatch }
+import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, collection, getDocs, getDoc,
+  getDocsFromServer, getDocFromServer, setDoc, deleteDoc, query, orderBy, limit, serverTimestamp, doc, updateDoc,
+  writeBatch, arrayUnion, arrayRemove, terminate, clearIndexedDbPersistence, waitForPendingWrites }
   from "https://www.gstatic.com/firebasejs/12.12.1/firebase-firestore.js";
 import { getAuth, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword,
   sendEmailVerification, sendPasswordResetEmail, signOut, reauthenticateWithCredential,
@@ -17,7 +18,11 @@ const firebaseConfig = {
   appId: "1:561252185881:web:edb9d343ebeb324077f788"
 };
 const firebaseApp = initializeApp(firebaseConfig);
-const db = getFirestore(firebaseApp);
+// Keep a copy of the database on the device so the app works without signal; writes made
+// offline are queued there and sent automatically once the connection is back.
+const db = initializeFirestore(firebaseApp, {
+  localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
+});
 const auth = getAuth(firebaseApp);
 let currentUser = null;
 
@@ -387,11 +392,12 @@ async function loadWorkouts() {
   allWorkouts = snap.docs.map(d => ({ id: d.id, ...d.data() }));
 }
 
-async function saveWorkoutDoc(data) {
-  const ref = await addDoc(userCol("workouts"), {
-    ...data,
-    savedAt: serverTimestamp()
-  });
+// Writes land in the on-device cache immediately and sync in the background, so these don't
+// wait for the server. A rejection here means the server refused it, not that we're offline.
+function saveWorkoutDoc(data) {
+  const ref = doc(userCol("workouts"));
+  setDoc(ref, { ...data, savedAt: serverTimestamp() })
+    .catch(e => { console.error(e); toast("A workout couldn't be saved to the server"); });
   const saved = { id: ref.id, ...data };
   allWorkouts.unshift(saved);
   allWorkouts.sort((a, b) => b.date.localeCompare(a.date));
@@ -404,13 +410,12 @@ async function loadBodyweights() {
   allBodyweights = snap.docs.map(d => ({ id: d.id, ...d.data() }));
 }
 
-async function saveBodyweightDoc(date, weight) {
-  const ref = await addDoc(userCol("bodyweight"), {
-    date,
-    weight: parseFloat(weight),
-    savedAt: serverTimestamp()
-  });
+function saveBodyweightDoc(date, weight) {
+  const ref = doc(userCol("bodyweight"));
+  setDoc(ref, { date, weight: parseFloat(weight), savedAt: serverTimestamp() })
+    .catch(e => { console.error(e); toast("A weigh-in couldn't be saved to the server"); });
   allBodyweights.unshift({ id: ref.id, date, weight: parseFloat(weight) });
+  allBodyweights.sort((a, b) => b.date.localeCompare(a.date));
 }
 
 // ── Whoop Auth & Data ────────────────────────────────────────
@@ -741,6 +746,94 @@ function renderDashboard() {
     '</button>';
 }
 
+// ── Custom exercises ─────────────────────────────────────────
+// Each person's own additions, kept as a list on their users/{uid} document and merged into
+// the built-in library (EXERCISES) for this session. Removing one keeps past workouts as they are.
+let customExercises = [];
+let customFormOpen = false;
+
+async function loadCustomExercises() {
+  try {
+    const snap = await getDoc(doc(db, "users", currentUser.uid));
+    customExercises = snap.data()?.customExercises || [];
+  } catch (e) {
+    console.error(e);
+    customExercises = [];
+  }
+  customExercises.forEach(addToLibrary);
+}
+
+function addToLibrary(c) {
+  const list = EXERCISES[c.muscleGroup] || (EXERCISES[c.muscleGroup] = []);
+  if (!list.some(e => e.name === c.name)) list.push({ name: c.name, weighted: c.weighted !== false, cues: [], custom: true });
+}
+
+// Names end up inside onclick="…('name')" strings, so straight quotes and markup characters are
+// swapped out (a typed apostrophe becomes a curly one)
+function cleanExerciseName(raw) {
+  return raw.replace(/'/g, "’").replace(/["\\<>]/g, "").replace(/\s+/g, " ").trim();
+}
+
+function customFormHTML() {
+  return '<div class="cx-form">' +
+    '<div class="section-title">New exercise</div>' +
+    '<label class="input-label" for="cx-name">Name</label>' +
+    '<input class="input-field" id="cx-name" maxlength="40" placeholder="e.g. Romanian Deadlift" autocomplete="off">' +
+    '<label class="input-label" for="cx-group">Muscle group</label>' +
+    '<select class="input-field cx-select" id="cx-group">' +
+      Object.keys(EXERCISES).map(g => '<option' + (g === activeLogGroup ? " selected" : "") + '>' + esc(g) + '</option>').join("") +
+    '</select>' +
+    '<label class="cx-check"><input type="checkbox" id="cx-weighted" checked> Uses weight (lbs)</label>' +
+    '<div class="cx-hint">Untick for bodyweight moves like crunches — those track reps only.</div>' +
+    '<div class="auth-msg" id="cx-msg" role="alert"></div>' +
+    '<div class="cx-actions">' +
+      '<button class="btn-secondary" onclick="window._toggleCustomForm()">Cancel</button>' +
+      '<button class="btn-primary" onclick="window._addCustomExercise()">Add exercise</button>' +
+    '</div>' +
+  '</div>';
+}
+
+window._toggleCustomForm = function() {
+  customFormOpen = !customFormOpen;
+  renderSheetContent();
+  if (customFormOpen) document.getElementById("cx-name")?.focus();
+};
+
+window._addCustomExercise = function() {
+  const name = cleanExerciseName(document.getElementById("cx-name").value);
+  const group = document.getElementById("cx-group").value;
+  const weighted = document.getElementById("cx-weighted").checked;
+  const msg = document.getElementById("cx-msg");
+  if (!name) { msg.textContent = "Give it a name."; return; }
+  if (Object.values(EXERCISES).flat().some(e => e.name.toLowerCase() === name.toLowerCase())) {
+    msg.textContent = "There's already an exercise called that.";
+    return;
+  }
+  const entry = { name, muscleGroup: group, weighted };
+  customExercises.push(entry);
+  addToLibrary(entry);
+  setDoc(doc(db, "users", currentUser.uid), { customExercises: arrayUnion(entry) }, { merge: true })
+    .catch(e => { console.error(e); toast("Couldn't save that exercise to the server"); });
+  customFormOpen = false;
+  activeLogGroup = group;
+  if (!logState.exercises[name]) window._sheetToggleEx(name, group);
+  renderSheetContent();
+  toast("Added " + name);
+};
+
+window._removeCustomExercise = function(name) {
+  const entry = customExercises.find(c => c.name === name);
+  if (!entry) return;
+  if (!confirm("Remove “" + name + "” from your exercise list? Past workouts that used it stay as they are.")) return;
+  customExercises = customExercises.filter(c => c !== entry);
+  const list = EXERCISES[entry.muscleGroup] || [];
+  const i = list.findIndex(e => e.name === name);
+  if (i >= 0) list.splice(i, 1);
+  setDoc(doc(db, "users", currentUser.uid), { customExercises: arrayRemove(entry) }, { merge: true })
+    .catch(e => { console.error(e); toast("Couldn't update the server"); });
+  renderSheetContent();
+};
+
 // ── Exercise picker sheet ────────────────────────────────────
 window._openSheet = function() {
   sheetOpen = true;
@@ -752,6 +845,7 @@ window._openSheet = function() {
 
 window._closeSheet = function() {
   sheetOpen = false;
+  customFormOpen = false;
   document.getElementById("workout-sheet").classList.add("hidden");
   document.getElementById("sheet-content").innerHTML = "";
 };
@@ -797,6 +891,10 @@ function renderSheetContent() {
 
     '<div class="exercises-list" id="log-ex-list">' + renderSheetExList(activeLogGroup) + '</div>' +
 
+    (customFormOpen
+      ? customFormHTML()
+      : '<button class="add-ex-btn" onclick="window._toggleCustomForm()">+ Custom exercise</button>') +
+
     '<div class="cardio-section">' +
       '<div class="section-title">Cardio</div>' +
       (bikeAdded
@@ -821,7 +919,8 @@ function renderSheetExList(group) {
   return (EXERCISES[group] || []).map(ex => {
     const sel = !!logState.exercises[ex.name];
     return '<div class="sheet-ex-row ' + (sel ? "selected" : "") + '">' +
-      '<span class="sheet-ex-name">' + esc(ex.name) + '</span>' +
+      '<span class="sheet-ex-name">' + esc(ex.name) + (ex.custom ? ' <span class="cx-tag">custom</span>' : '') + '</span>' +
+      (ex.custom ? '<button class="cx-remove" aria-label="Remove ' + esc(ex.name) + ' from your exercises" onclick="window._removeCustomExercise(\'' + ex.name + '\')">&#x2715;</button>' : '') +
       '<button class="' + (sel ? "btn-sheet-remove" : "btn-sheet-add") + '" ' +
         'onclick="window._sheetToggleEx(\'' + ex.name + '\',\'' + group + '\')">' +
         (sel ? '✓ Added' : '+ Add') +
@@ -1176,6 +1275,7 @@ window._finishWorkout = async function(btn) {
     clearTimer();
     localStorage.removeItem(DRAFT_KEY);
     showSummary(saved, elapsedMs);
+    if (!navigator.onLine) toast("Saved on this phone — it will sync when you're back online");
   } catch (e) {
     console.error(e);
     toast("Error saving — please try again");
@@ -1362,15 +1462,13 @@ function showSummary(w, elapsedMs) {
 window._saveSummaryNote = async function(btn) {
   const text = document.getElementById("sum-note-text").value;
   btn.disabled = true;
-  try {
-    await updateDoc(doc(db, "users", currentUser.uid, "workouts", summaryWorkout.id), { notes: text });
-    summaryWorkout.notes = text;
-    toast("Note saved");
-    document.getElementById("sum-note").classList.add("hidden");
-  } catch (e) {
-    console.error(e);
-    toast("Couldn't save note — try again");
-  }
+  updateDoc(doc(db, "users", currentUser.uid, "workouts", summaryWorkout.id), { notes: text })
+    .catch(e => { console.error(e); toast("Couldn't save note to the server"); });
+  summaryWorkout.notes = text;
+  const w = allWorkouts.find(x => x.id === summaryWorkout.id);
+  if (w) w.notes = text;
+  toast(navigator.onLine ? "Note saved" : "Note saved — will sync when you're online");
+  document.getElementById("sum-note").classList.add("hidden");
   btn.disabled = false;
 };
 
@@ -1853,37 +1951,61 @@ window._authVerified = async function() {
 };
 
 window._signOut = async function() {
+  const synced = await Promise.race([
+    waitForPendingWrites(db).then(() => true),
+    new Promise(r => setTimeout(() => r(false), 3000))
+  ]);
+  if (!synced && !confirm("Some changes haven't synced yet because you're offline. If you sign out now they'll be lost. Sign out anyway?")) return;
   clearPersonalDeviceData();
   await signOut(auth);
+  await wipeOfflineDataAndReload();
 };
+
+// The next person on this device must not be able to read this person's cached data
+async function wipeOfflineDataAndReload() {
+  try { await terminate(db); await clearIndexedDbPersistence(db); }
+  catch (e) { console.error(e); }
+  location.reload();
+}
 
 // Per-device leftovers from the previous person on this phone
 function clearPersonalDeviceData() {
-  [DRAFT_KEY, TIMER_KEY, "progress_ex", "whoop_access_token", "whoop_refresh_token", "whoop_token_expires", "whoop_state"]
+  [DRAFT_KEY, TIMER_KEY, ACCESS_KEY, "progress_ex", "whoop_access_token", "whoop_refresh_token", "whoop_token_expires", "whoop_state"]
     .forEach(k => localStorage.removeItem(k));
   logState = { date: todayStr(), exercises: {}, cardio: "", notes: "" };
   allWorkouts = []; allBodyweights = []; whoopData = null; isAdmin = false; appStarted = false;
 }
 
-// Admins are the only accounts the rules let list the invites collection
-async function checkAdmin() {
-  try { await getDocs(query(collection(db, "invites"), limit(1))); return true; }
-  catch (e) { return false; }
-}
+const ACCESS_KEY = "access_ok";   // "<uid>|admin" or "<uid>|member" from the last online check
 
-async function hasAccess(user) {
-  if (isAdmin) return true;
+// Admins are the only accounts the rules let list the invites collection. These checks go to
+// the server on purpose: a cached read wouldn't be judged by the security rules.
+async function checkAccess(user) {
   try {
-    return (await getDoc(doc(db, "invites", user.email.toLowerCase()))).exists();
-  } catch (e) { return false; }
+    let admin = false;
+    try { await getDocsFromServer(query(collection(db, "invites"), limit(1))); admin = true; }
+    catch (e) { if (e.code === "unavailable") throw e; }
+    const ok = admin || (await getDocFromServer(doc(db, "invites", user.email.toLowerCase()))).exists();
+    if (ok) localStorage.setItem(ACCESS_KEY, user.uid + "|" + (admin ? "admin" : "member"));
+    else localStorage.removeItem(ACCESS_KEY);
+    return { ok, admin };
+  } catch (e) {
+    const cached = localStorage.getItem(ACCESS_KEY) || "";
+    if (e.code === "unavailable" && cached.startsWith(user.uid + "|")) {
+      return { ok: true, admin: cached.endsWith("|admin") };
+    }
+    throw e;
+  }
 }
 
 async function afterSignIn(user) {
   currentUser = user;
   if (!user.emailVerified) { showAuth("verify"); return; }
-  isAdmin = await checkAdmin();
-  if (!(await hasAccess(user))) { showAuth("notinvited"); return; }
-  await setDoc(doc(db, "users", user.uid), { email: user.email.toLowerCase(), lastSeen: serverTimestamp() }, { merge: true });
+  const access = await checkAccess(user);
+  isAdmin = access.admin;
+  if (!access.ok) { showAuth("notinvited"); return; }
+  setDoc(doc(db, "users", user.uid), { email: user.email.toLowerCase(), lastSeen: serverTimestamp() }, { merge: true })
+    .catch(e => console.error(e));
   if (isAdmin && await offerLegacyImport()) return;
   hideAuth();
   await startApp();
@@ -2082,6 +2204,7 @@ window._deleteAccount = async function() {
     clearPersonalDeviceData();
     window._closeSheet();
     await deleteUser(user);
+    await wipeOfflineDataAndReload();
   } catch (e) {
     console.error(e);
     btn.disabled = false;
@@ -2106,7 +2229,7 @@ async function startApp() {
   loadingDiv.textContent = "Loading…";
   document.getElementById("app-main").appendChild(loadingDiv);
 
-  try { await Promise.all([loadWorkouts(), loadBodyweights()]); }
+  try { await Promise.all([loadCustomExercises(), loadWorkouts(), loadBodyweights()]); }
   catch (e) {
     console.error("Firebase load error:", e);
     loadingDiv.remove();
@@ -2135,7 +2258,16 @@ async function startApp() {
   showView("dashboard");
 }
 
+function updateOnlineBanner() {
+  document.getElementById("offline-banner").hidden = navigator.onLine;
+}
+
 function init() {
+  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(e => console.error(e));
+  updateOnlineBanner();
+  window.addEventListener("online", updateOnlineBanner);
+  window.addEventListener("offline", updateOnlineBanner);
+
   document.getElementById("header-date").textContent =
     new Date().toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
 
