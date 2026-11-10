@@ -451,23 +451,39 @@ function storeWhoopTokens(tokens) {
   localStorage.setItem('whoop_token_expires', Date.now() + (tokens.expires_in * 1000));
 }
 
+let whoopRefreshing = null;   // one renewal at a time: WHOOP rejects a second use of the same refresh token
+
+function clearWhoopTokens() {
+  ['whoop_access_token','whoop_refresh_token','whoop_token_expires']
+    .forEach(k => localStorage.removeItem(k));
+}
+
 async function getWhoopToken() {
   const token   = localStorage.getItem('whoop_access_token');
   const expires = parseInt(localStorage.getItem('whoop_token_expires') || '0');
   if (!token) return null;
-  if (Date.now() > expires - 300000) {
-    const rt = localStorage.getItem('whoop_refresh_token');
-    if (!rt) return token;
+  if (Date.now() < expires - 300000) return token;
+  const rt = localStorage.getItem('whoop_refresh_token');
+  if (!rt) { clearWhoopTokens(); return null; }
+  whoopRefreshing ??= (async () => {
     try {
       const res = await fetch(WHOOP_WORKER_URL, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ refresh_token: rt, grant_type: 'refresh_token' })
       });
-      const tokens = await res.json();
+      const tokens = await res.json().catch(() => null);
       if (tokens?.access_token) { storeWhoopTokens(tokens); return tokens.access_token; }
-    } catch(e) { /* use existing token */ }
-  }
-  return token;
+      // WHOOP refused the renewal, so this sign-in is dead: clear it so the tile offers Connect Whoop
+      clearWhoopTokens();
+      return null;
+    } catch (e) {
+      // Offline or the request never landed: keep the tokens and try again next time the app opens
+      return null;
+    } finally {
+      whoopRefreshing = null;
+    }
+  })();
+  return whoopRefreshing;
 }
 
 async function whoopApi(path, token) {
